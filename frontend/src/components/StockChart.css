@@ -1,0 +1,60 @@
+.stock-chart { width: 100%; }
+
+.chart-intervals {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.interval-btn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface2);
+  transition: all 0.15s;
+}
+.interval-btn:hover { color: var(--text); }
+.interval-btn.active { background: var(--accent-glow); color: var(--accent); }
+.interval-btn.refresh { margin-left: auto; font-size: 16px; }
+
+.chart-error {
+  color: var(--red);
+  font-size: 13px;
+  padding: 24px;
+  text-align: center;
+}
+
+.chart-empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 48px;
+  text-align: center;
+}
+
+.chart-tooltip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 12px;
+  min-width: 140px;
+}
+
+.tt-time {
+  color: var(--muted);
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+
+.tt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 2px 0;
+  color: var(--text);
+}
+.tt-row .up { color: var(--green); }
+.tt-row .down { color: var(--red); }

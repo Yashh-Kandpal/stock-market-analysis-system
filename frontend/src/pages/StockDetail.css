@@ -1,0 +1,61 @@
+.stock-detail { display: flex; flex-direction: column; gap: 20px; }
+
+.sd-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.back-btn {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--muted); font-size: 13px; font-weight: 500;
+  padding: 6px 10px; border-radius: 6px;
+  transition: color 0.15s;
+}
+.back-btn:hover { color: var(--text); }
+
+.watch-btn {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600;
+  padding: 7px 14px; border-radius: 8px;
+  background: var(--surface2); color: var(--muted);
+  border: 1px solid var(--border);
+  transition: all 0.15s;
+}
+.watch-btn:hover { color: var(--text); border-color: var(--accent); }
+.watch-btn.watched { color: var(--yellow); border-color: var(--yellow); background: rgba(236,201,75,0.08); }
+
+.sd-hero {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.sd-symbol { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
+
+.sd-change { display: flex; align-items: baseline; gap: 10px; font-size: 15px; font-weight: 600; }
+.sd-price { font-size: 28px; }
+.sd-change.up { color: var(--green); }
+.sd-change.down { color: var(--red); }
+
+.sd-ohlc-strip {
+  display: flex; gap: 20px; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 20px;
+}
+.strip-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.strip-item span:first-child { font-size: 10px; color: var(--muted); }
+.strip-item span:last-child { font-size: 13px; font-weight: 600; color: var(--text); }
+.strip-item .up { color: var(--green); }
+.strip-item .down { color: var(--red); }
+
+.sd-tabs { display: flex; gap: 4px; }
+.sd-tabs button {
+  padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  color: var(--muted); background: var(--surface2);
+  transition: all 0.15s;
+}
+.sd-tabs button:hover { color: var(--text); }
+.sd-tabs button.active { background: var(--accent-glow); color: var(--accent); }

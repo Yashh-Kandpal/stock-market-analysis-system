@@ -1,0 +1,60 @@
+.search-page { display: flex; flex-direction: column; gap: 24px; }
+
+.search-form { display: flex; gap: 10px; }
+
+.search-input-wrap {
+  position: relative; flex: 1;
+}
+.search-icon {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  color: var(--muted); pointer-events: none;
+}
+.search-input {
+  width: 100%; padding: 11px 14px 11px 40px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; color: var(--text); font-size: 14px;
+  outline: none; transition: border-color 0.15s;
+}
+.search-input:focus { border-color: var(--accent); }
+.search-input::placeholder { color: var(--muted); }
+
+.search-btn {
+  padding: 11px 22px; border-radius: 10px;
+  background: var(--accent); color: #fff; font-weight: 600; font-size: 14px;
+  transition: opacity 0.15s;
+}
+.search-btn:hover { opacity: 0.85; }
+.search-btn:disabled { opacity: 0.5; cursor: default; }
+
+.search-error { color: var(--red); font-size: 13px; }
+.search-empty { color: var(--muted); font-size: 13px; }
+
+.search-results { display: flex; flex-direction: column; gap: 10px; }
+
+.result-card {
+  display: flex; align-items: center;
+  justify-content: space-between; gap: 16px;
+  padding: 16px 20px;
+}
+
+.result-symbol { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+.result-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.result-meta { display: flex; gap: 12px; font-size: 11px; color: var(--muted); }
+
+.result-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.result-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 600;
+  transition: all 0.15s;
+}
+.result-btn.view {
+  background: var(--accent-glow); color: var(--accent);
+  border: 1px solid rgba(108,142,247,0.3);
+}
+.result-btn.view:hover { background: var(--accent); color: #fff; }
+.result-btn.watch {
+  background: var(--surface2); color: var(--muted);
+  border: 1px solid var(--border);
+}
+.result-btn.watch:hover { color: var(--yellow); border-color: var(--yellow); }
+.result-btn:disabled { opacity: 0.5; cursor: default; }

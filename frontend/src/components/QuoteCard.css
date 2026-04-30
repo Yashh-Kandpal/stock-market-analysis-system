@@ -1,0 +1,81 @@
+.quote-card.clickable {
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.quote-card.clickable:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.qc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.qc-symbol {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.qc-name {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qc-refresh {
+  color: var(--muted);
+  padding: 4px;
+  border-radius: 6px;
+  transition: color 0.15s;
+}
+.qc-refresh:hover { color: var(--accent); }
+.qc-refresh .spinning { animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.qc-skeleton {
+  height: 56px;
+  background: var(--surface2);
+  border-radius: 8px;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }
+
+.qc-error {
+  font-size: 12px;
+  color: var(--red);
+  padding: 8px 0;
+}
+
+.qc-price {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.qc-change {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.qc-change.up { color: var(--green); }
+.qc-change.down { color: var(--red); }
+
+.qc-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
