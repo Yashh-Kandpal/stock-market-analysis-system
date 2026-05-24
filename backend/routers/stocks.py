@@ -1,14 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext import asyncio
+from sqlalchemy.ext import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc
 from typing import Optional
 from datetime import datetime, timedelta
 import logging
+import asyncio
 
 from database import get_db, StockPrice
-from alpha_vantage import (
+from yahoo_finance import (
     fetch_intraday, fetch_daily, fetch_quote, search_symbol,
-    parse_intraday_series, parse_daily_series, parse_quote,
     POPULAR_INDIAN_STOCKS
 )
 
@@ -29,32 +31,8 @@ async def get_popular_stocks():
 async def search_stocks(q: str = Query(..., min_length=1)):
     """Search for stock symbols via Alpha Vantage."""
     try:
-        data = await search_symbol(q)
-        matches = data.get("bestMatches", [])
-        # Filter for Indian stocks (BSE/NSE/BOM)
-        indian = [
-            {
-                "symbol": m["1. symbol"],
-                "name": m["2. name"],
-                "type": m["3. type"],
-                "region": m["4. region"],
-                "currency": m["8. currency"],
-                "match_score": m["9. matchScore"],
-            }
-            for m in matches
-            if "India" in m.get("4. region", "") or "BSE" in m.get("1. symbol", "") or "NSE" in m.get("1. symbol", "")
-        ]
-        return indian or [
-            {
-                "symbol": m["1. symbol"],
-                "name": m["2. name"],
-                "type": m["3. type"],
-                "region": m["4. region"],
-                "currency": m["8. currency"],
-                "match_score": m["9. matchScore"],
-            }
-            for m in matches[:5]
-        ]
+        results = await asyncio.to_thread(search_symbol, q.strip())
+        return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -63,10 +41,7 @@ async def search_stocks(q: str = Query(..., min_length=1)):
 async def get_quote(symbol: str):
     """Get the latest quote for a stock."""
     try:
-        data = await fetch_quote(symbol.upper())
-        parsed = parse_quote(data)
-        if not parsed:
-            raise HTTPException(status_code=404, detail=f"No quote found for {symbol}")
+        parsed = await asyncio.to_thread(fetch_quote, symbol.upper())
         return parsed
     except ValueError as e:
         raise HTTPException(status_code=429, detail=str(e))
@@ -109,8 +84,7 @@ async def get_intraday(
 
     # Fetch from Alpha Vantage
     try:
-        raw = await fetch_intraday(symbol, interval)
-        parsed = parse_intraday_series(raw, symbol, interval)
+        parsed = await asyncio.to_thread(fetch_intraday, symbol, interval)
     except ValueError as e:
         raise HTTPException(status_code=429, detail=str(e))
     except Exception as e:
@@ -174,10 +148,7 @@ async def get_daily(
             }
 
     try:
-        raw = await fetch_daily(symbol, outputsize="full" if days > 100 else "compact")
-        parsed = parse_daily_series(raw, symbol)
-        # Filter to requested range
-        parsed = [p for p in parsed if p["timestamp"] >= cutoff]
+        parsed = await asyncio.to_thread(fetch_daily, symbol, days)
     except ValueError as e:
         raise HTTPException(status_code=429, detail=str(e))
     except Exception as e:

@@ -25,7 +25,6 @@ services:
     container_name: stock_backend
     environment:
       DATABASE_URL: postgresql+asyncpg://stockuser:stockpass@db:5432/stockdb
-      ALPHA_VANTAGE_KEY: ${ALPHA_VANTAGE_KEY:-demo}
     ports:
       - "8000:8000"
     depends_on:
