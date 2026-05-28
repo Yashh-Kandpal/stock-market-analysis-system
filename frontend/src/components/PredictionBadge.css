@@ -1,0 +1,20 @@
+.pred-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 15px;
+  border: 1px solid;
+}
+.pred-badge.up   { color: var(--green); background: rgba(72,187,120,0.1);  border-color: rgba(72,187,120,0.3); }
+.pred-badge.down { color: var(--red);   background: rgba(252,129,129,0.1); border-color: rgba(252,129,129,0.3); }
+
+.pred-arrow { font-size: 18px; }
+.pred-dir   { font-size: 16px; }
+.pred-conf  { font-size: 12px; font-weight: 500; opacity: 0.8; }
+.pred-label { font-size: 11px; font-weight: 500;
+  padding: 2px 7px; border-radius: 20px;
+  background: rgba(255,255,255,0.1);
+}

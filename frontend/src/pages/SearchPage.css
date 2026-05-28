@@ -58,3 +58,10 @@
 }
 .result-btn.watch:hover { color: var(--yellow); border-color: var(--yellow); }
 .result-btn:disabled { opacity: 0.5; cursor: default; }
+.search-clear {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  color: var(--muted); padding: 2px; cursor: pointer;
+  transition: color 0.15s;
+}
+.search-clear:hover { color: var(--text); }
+.search-searching { color: var(--muted); font-size: 13px; }

@@ -29,7 +29,7 @@ export default function QuoteCard({ symbol, companyName, onSelect }) {
   const isUp = change >= 0
 
   return (
-    <Card className={`quote-card ${onSelect ? 'clickable' : ''}`} onClick={onSelect ? () => onSelect(symbol) : undefined}>
+    <Card className={`quote-card ${onSelect ? 'clickable' : ''}`} onClick={onSelect ? (e) => { e.stopPropagation(); onSelect(symbol) } : undefined}>
       <div className="qc-header">
         <div>
           <div className="qc-symbol">{symbol}</div>

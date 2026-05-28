@@ -54,7 +54,7 @@ export default function StockChart({ symbol }) {
       } else {
         res = await stocksApi.getDaily(symbol, iv.days || 30)
       }
-      const chartData = res.data.map(d => ({
+      const chartData = (res.data || []).map(d => ({
         ...d,
         label: formatLabel(d.timestamp, iv.type),
       }))

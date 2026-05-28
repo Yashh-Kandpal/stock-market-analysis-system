@@ -1,6 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext import asyncio
-from sqlalchemy.ext import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, desc
 from typing import Optional
@@ -124,9 +122,6 @@ async def get_daily(
     refresh: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Get daily OHLCV data for a stock (last N days).
-    """
     symbol = symbol.upper()
     cutoff = datetime.utcnow() - timedelta(days=days)
 
@@ -138,7 +133,8 @@ async def get_daily(
         )
         result = await db.execute(stmt)
         rows = result.scalars().all()
-        if rows:
+        # Only use cache if we have at least 80% of expected rows
+        if len(rows) >= int(days * 0.8):
             return {
                 "symbol": symbol,
                 "interval": "1day",
@@ -150,11 +146,10 @@ async def get_daily(
     try:
         parsed = await asyncio.to_thread(fetch_daily, symbol, days)
     except ValueError as e:
-        raise HTTPException(status_code=429, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Alpha Vantage error: {e}")
+        raise HTTPException(status_code=502, detail=f"yfinance error: {e}")
 
-    # Upsert
     saved = 0
     for row in parsed:
         existing = await db.execute(
@@ -171,12 +166,14 @@ async def get_daily(
             saved += 1
     await db.commit()
 
-    # Convert timestamps to strings for JSON
-    serialized = [{**r, "timestamp": r["timestamp"].isoformat()} for r in parsed]
+    serialized = [
+        {**r, "timestamp": r["timestamp"].isoformat() if isinstance(r["timestamp"], datetime) else r["timestamp"]}
+        for r in parsed
+    ]
     return {
         "symbol": symbol,
         "interval": "1day",
-        "source": "alpha_vantage",
+        "source": "yfinance",
         "count": len(serialized),
         "data": serialized,
     }

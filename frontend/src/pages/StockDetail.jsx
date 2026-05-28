@@ -31,7 +31,7 @@ export default function StockDetail() {
           watchlistApi.getAll(),
         ])
         setQuote(q)
-        setHistory(h.data || [])
+        setHistory(Array.isArray(h?.data) ? h.data : [])
         setWatchlist(wl)
       } catch (e) {
         console.error(e)
@@ -98,7 +98,21 @@ export default function StockDetail() {
 
       <div className="sd-tabs">
         <button className={tab === 'chart' ? 'active' : ''} onClick={() => setTab('chart')}>Chart</button>
-        <button className={tab === 'table' ? 'active' : ''} onClick={() => setTab('table')}>Data Table</button>
+        <button className={tab === 'table' ? 'active' : ''} onClick={async () => {
+          setTab('table')
+          if (history.length === 0) {
+            try {
+                const h = await stocksApi.getDaily(decoded, 30)
+                setHistory(Array.isArray(h?.data) ? h.data : [])
+            } catch (e) { console.error(e) }
+          }
+        }}>Data Table</button>
+        <button onClick={() => navigate(`/analysis/${encodeURIComponent(decoded)}`)}>
+          Analysis
+        </button>
+        <button onClick={() => navigate(`/ml/${encodeURIComponent(decoded)}`)}>
+          ML Predictions
+        </button>
       </div>
 
       <Card>

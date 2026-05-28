@@ -3,9 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
 import logging
-
+from routers import analysis 
 from database import create_tables
-from routers import stocks, watchlist
+from routers import stocks, watchlist, ml
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -46,3 +46,6 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
+app.include_router(ml.router, prefix="/api/ml", tags=["ml"])

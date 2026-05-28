@@ -43,33 +43,63 @@ INTRADAY_PERIOD = {
 
 
 def fetch_quote(symbol: str) -> dict:
-    """Fetch latest quote using yfinance fast_info."""
     ticker = yf.Ticker(symbol)
-    info = ticker.fast_info
-    hist = ticker.history(period="2d", interval="1d")
+    
+    # fast_info is more reliable for current price
+    try:
+        fi = ticker.fast_info
+        price = float(fi.last_price) if fi.last_price else None
+        prev_close = float(fi.previous_close) if fi.previous_close else None
+    except Exception:
+        price = None
+        prev_close = None
 
-    if hist.empty:
-        raise ValueError(f"No data found for symbol: {symbol}")
+    # fallback to history if fast_info fails
+    if not price:
+        hist = ticker.history(period="5d", interval="1d")
+        if hist.empty:
+            raise ValueError(f"No data found for symbol: {symbol}")
+        # drop rows where Close is 0 or NaN
+        hist = hist[hist["Close"] > 0].dropna(subset=["Close"])
+        if hist.empty:
+            raise ValueError(f"No valid price data for symbol: {symbol}")
+        latest = hist.iloc[-1]
+        prev   = hist.iloc[-2] if len(hist) > 1 else hist.iloc[-1]
+        price      = float(latest["Close"])
+        prev_close = float(prev["Close"])
+        open_  = float(latest["Open"])
+        high   = float(latest["High"])
+        low    = float(latest["Low"])
+        volume = float(latest["Volume"])
+        day    = str(hist.index[-1].date())
+    else:
+        def _s(val):
+            try:
+                f = float(val)
+                return 0.0 if (f != f) else f
+            except Exception:
+                return 0.0
+        open_  = _s(getattr(fi, 'open',   None))
+        high   = _s(getattr(fi, 'day_high', None))
+        low    = _s(getattr(fi, 'day_low',  None))
+        volume = _s(getattr(fi, 'three_month_average_volume', None))
+        day    = str(datetime.utcnow().date())
 
-    latest = hist.iloc[-1]
-    prev = hist.iloc[-2] if len(hist) > 1 else hist.iloc[-1]
-
-    price = float(latest["Close"])
-    prev_close = float(prev["Close"])
-    change = price - prev_close
-    change_pct = (change / prev_close * 100) if prev_close else 0.0
+    prev_close = prev_close or price
+    change     = round(price - prev_close, 2)
+    change_pct = round((change / prev_close * 100) if prev_close else 0.0, 2)
 
     return {
-        "symbol": symbol,
-        "open":           float(latest["Open"]),
-        "high":           float(latest["High"]),
-        "low":            float(latest["Low"]),
-        "price":          price,
-        "volume":         float(latest["Volume"]),
-        "latest_trading_day": str(hist.index[-1].date()),
-        "previous_close": prev_close,
-        "change":         round(change, 2),
-        "change_percent": str(round(change_pct, 2)),
+        "symbol":             symbol,
+        "open":               open_,
+        "high":               high,
+        "low":                low,
+        "price":              price,
+        "volume":             volume,
+        "latest_trading_day": day,
+        "previous_close":     prev_close,
+        "change":             change,
+        "change_percent":     str(change_pct),
     }
 
 
@@ -100,56 +130,79 @@ def fetch_daily(symbol: str, days: int = 30) -> list[dict]:
 
 
 def search_symbol(keywords: str) -> list[dict]:
-    """
-    Search for tickers using yfinance search.
-    Filters results to Indian exchanges (NSE/BSE).
-    """
-    results = yf.Search(keywords, max_results=10)
-    quotes = results.quotes if hasattr(results, "quotes") else []
+    results = []
 
-    indian = [
-        {
-            "symbol":       q.get("symbol", ""),
-            "name":         q.get("longname") or q.get("shortname", ""),
-            "type":         q.get("quoteType", ""),
-            "region":       "India" if q.get("exchange") in ("NSI", "BSE") else q.get("exchange", ""),
-            "currency":     q.get("currency", "INR"),
-            "match_score":  "1.0000",
-        }
-        for q in quotes
-        if q.get("exchange") in ("NSI", "BSE") or ".NS" in q.get("symbol", "") or ".BO" in q.get("symbol", "")
-    ]
+    # Use yf.Search for partial/name queries
+    try:
+        search = yf.Search(keywords, max_results=15, news_count=0)
+        quotes = getattr(search, 'quotes', []) or []
+        for q in quotes:
+            sym = q.get('symbol', '')
+            if not sym:
+                continue
+            is_indian = (
+                q.get('exchange') in ('NSI', 'BSE', 'NMS', 'NSE')
+                or '.NS' in sym
+                or '.BO' in sym
+            )
+            results.append({
+                "symbol":      sym,
+                "name":        q.get('longname') or q.get('shortname', sym),
+                "type":        q.get('quoteType', ''),
+                "region":      "India" if is_indian else q.get('exchange', ''),
+                "currency":    q.get('currency', 'INR' if is_indian else ''),
+                "match_score": "1.0000",
+            })
+        indian = [r for r in results if r['region'] == 'India']
+        return indian or results[:5]
+    except Exception:
+        pass
 
-    # Fall back to all results if no Indian ones found
-    return indian or [
-        {
-            "symbol":      q.get("symbol", ""),
-            "name":        q.get("longname") or q.get("shortname", ""),
-            "type":        q.get("quoteType", ""),
-            "region":      q.get("exchange", ""),
-            "currency":    q.get("currency", ""),
-            "match_score": "1.0000",
-        }
-        for q in quotes[:5]
-    ]
+    # Fallback: direct ticker lookup
+    for suffix in ['.NS', '.BO']:
+        sym = keywords.upper() + suffix
+        try:
+            t = yf.Ticker(sym)
+            price = getattr(t.fast_info, 'last_price', None)
+            if price and float(price) > 0:
+                results.append({
+                    "symbol":      sym,
+                    "name":        sym,
+                    "type":        "EQUITY",
+                    "region":      "India",
+                    "currency":    "INR",
+                    "match_score": "1.0000",
+                })
+        except Exception:
+            continue
+
+    return results
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _df_to_records(df: pd.DataFrame, symbol: str, interval: str) -> list[dict]:
-    """Convert a yfinance DataFrame to list of OHLCV dicts."""
+    def safe(val):
+        try:
+            f = float(val)
+            return 0.0 if (f != f) else f
+        except (TypeError, ValueError):
+            return 0.0
+
     records = []
     for ts, row in df.iterrows():
-        # yfinance index is timezone-aware; strip tz for DB storage
         naive_ts = ts.to_pydatetime().replace(tzinfo=None)
+        # skip rows where close is 0 or missing
+        if safe(row["Close"]) == 0.0:
+            continue
         records.append({
             "symbol":    symbol,
             "timestamp": naive_ts,
-            "open":      float(row["Open"]),
-            "high":      float(row["High"]),
-            "low":       float(row["Low"]),
-            "close":     float(row["Close"]),
-            "volume":    float(row["Volume"]),
+            "open":      safe(row["Open"]),
+            "high":      safe(row["High"]),
+            "low":       safe(row["Low"]),
+            "close":     safe(row["Close"]),
+            "volume":    safe(row["Volume"]),
             "interval":  interval,
         })
     return records

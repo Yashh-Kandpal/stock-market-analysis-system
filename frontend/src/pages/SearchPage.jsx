@@ -1,24 +1,47 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Star, TrendingUp } from 'lucide-react'
+import { Search, Star, TrendingUp, X } from 'lucide-react'
 import { stocksApi, watchlistApi } from '../api/client'
 import Card from '../components/Card'
 import './SearchPage.css'
 
 export default function SearchPage() {
-  const [query, setQuery] = useState('')
+  const [query, setQuery]     = useState('')
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [adding, setAdding] = useState(null)
-  const navigate = useNavigate()
+  const [error, setError]     = useState(null)
+  const [adding, setAdding]   = useState(null)
+  const debounceRef           = useRef(null)
+  const navigate              = useNavigate()
 
-  const handleSearch = async (e) => {
+  // Debounced live search — fires 400ms after user stops typing
+  useEffect(() => {
+    if (!query.trim() || query.trim().length < 2) {
+      setResults([])
+      return
+    }
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const data = await stocksApi.search(query.trim())
+        setResults(data)
+      } catch (e) {
+        setError(e.response?.data?.detail || 'Search failed')
+      } finally {
+        setLoading(false)
+      }
+    }, 400)
+
+    return () => clearTimeout(debounceRef.current)
+  }, [query])
+
+  const handleSubmit = async (e) => {
     e.preventDefault()
     if (!query.trim()) return
     setLoading(true)
     setError(null)
-    setResults([])
     try {
       const data = await stocksApi.search(query.trim())
       setResults(data)
@@ -45,20 +68,25 @@ export default function SearchPage() {
     <div className="search-page">
       <div className="page-header">
         <h1>Search Stocks</h1>
-        <p className="page-sub">Search by company name or ticker symbol (e.g. RELIANCE, TCS, INFY)</p>
+        <p className="page-sub">Search by company name or ticker — results appear as you type</p>
       </div>
 
-      <form className="search-form" onSubmit={handleSearch}>
+      <form className="search-form" onSubmit={handleSubmit}>
         <div className="search-input-wrap">
           <Search size={16} className="search-icon" />
           <input
             className="search-input"
             type="text"
-            placeholder="Search symbol or company..."
+            placeholder="e.g. Reliance, TCS, INFY..."
             value={query}
             onChange={e => setQuery(e.target.value)}
             autoFocus
           />
+          {query && (
+            <button type="button" className="search-clear" onClick={() => { setQuery(''); setResults([]) }}>
+              <X size={14} />
+            </button>
+          )}
         </div>
         <button className="search-btn" type="submit" disabled={loading}>
           {loading ? 'Searching...' : 'Search'}
@@ -66,6 +94,10 @@ export default function SearchPage() {
       </form>
 
       {error && <div className="search-error">{error}</div>}
+
+      {loading && query.length >= 2 && results.length === 0 && (
+        <div className="search-searching">Searching for "{query}"…</div>
+      )}
 
       {results.length > 0 && (
         <div className="search-results">
@@ -77,7 +109,6 @@ export default function SearchPage() {
                 <div className="result-meta">
                   <span>{item.region}</span>
                   <span>{item.currency}</span>
-                  <span>Score: {parseFloat(item.match_score || 0).toFixed(2)}</span>
                 </div>
               </div>
               <div className="result-actions">
@@ -100,8 +131,8 @@ export default function SearchPage() {
         </div>
       )}
 
-      {!loading && results.length === 0 && query && (
-        <div className="search-empty">No results found for "{query}". Try a different term.</div>
+      {!loading && results.length === 0 && query.length >= 2 && (
+        <div className="search-empty">No results found for "{query}".</div>
       )}
     </div>
   )

@@ -27,3 +27,32 @@ export const watchlistApi = {
 }
 
 export default api
+
+export const analysisApi = {
+  summary:           (symbol, days = 90)                          => api.get(`/analysis/${symbol}/summary`,            { params: { days } }).then(r => r.data),
+  movingAverages:    (symbol, days = 180, windows = '9,20,50,200') => api.get(`/analysis/${symbol}/moving-averages`,    { params: { days, windows } }).then(r => r.data),
+  volatility:        (symbol, days = 180, window = 20)             => api.get(`/analysis/${symbol}/volatility`,         { params: { days, window } }).then(r => r.data),
+  anomalies:         (symbol, days = 180, window = 20, threshold = 2.5) => api.get(`/analysis/${symbol}/anomalies`,    { params: { days, window, threshold } }).then(r => r.data),
+  rsi:               (symbol, days = 180, period = 14)             => api.get(`/analysis/${symbol}/rsi`,               { params: { days, period } }).then(r => r.data),
+  macd:              (symbol, days = 180)                          => api.get(`/analysis/${symbol}/macd`,              { params: { days } }).then(r => r.data),
+  supportResistance: (symbol, days = 180)                          => api.get(`/analysis/${symbol}/support-resistance`, { params: { days } }).then(r => r.data),
+  returns:           (symbol, days = 365)                          => api.get(`/analysis/${symbol}/returns`,            { params: { days } }).then(r => r.data),
+  full:              (symbol, days = 180)                          => api.get(`/analysis/${symbol}/full`,               { params: { days } }).then(r => r.data),
+}
+
+export const mlApi = {
+  arima:           (symbol, days = 365, forecastDays = 14) =>
+    api.get(`/ml/${symbol}/arima`,            { params: { days, forecast_days: forecastDays } }).then(r => r.data),
+  linear:          (symbol, days = 365) =>
+    api.get(`/ml/${symbol}/linear`,           { params: { days } }).then(r => r.data),
+  xgboost:         (symbol, days = 365) =>
+    api.get(`/ml/${symbol}/xgboost`,          { params: { days } }).then(r => r.data),
+  isolationForest: (symbol, days = 365, contamination = 0.05) =>
+    api.get(`/ml/${symbol}/isolation-forest`, { params: { days, contamination } }).then(r => r.data),
+  prophet:         (symbol, days = 730, forecastDays = 30) =>
+    api.get(`/ml/${symbol}/prophet`,          { params: { days, forecast_days: forecastDays } }).then(r => r.data),
+  summary:         (symbol, days = 365) =>
+    api.get(`/ml/${symbol}/summary`,          { params: { days } }).then(r => r.data),
+  clearCache:      (symbol) =>
+    api.delete(`/ml/${symbol}/cache`).then(r => r.data),
+}
