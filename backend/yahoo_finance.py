@@ -131,50 +131,54 @@ def fetch_daily(symbol: str, days: int = 30) -> list[dict]:
 
 def search_symbol(keywords: str) -> list[dict]:
     results = []
+    seen = set()
 
-    # Use yf.Search for partial/name queries
-    try:
-        search = yf.Search(keywords, max_results=15, news_count=0)
-        quotes = getattr(search, 'quotes', []) or []
-        for q in quotes:
-            sym = q.get('symbol', '')
-            if not sym:
-                continue
-            is_indian = (
-                q.get('exchange') in ('NSI', 'BSE', 'NMS', 'NSE')
-                or '.NS' in sym
-                or '.BO' in sym
-            )
+    def add(sym, name, region="India", currency="INR"):
+        if sym and sym not in seen:
+            seen.add(sym)
             results.append({
                 "symbol":      sym,
-                "name":        q.get('longname') or q.get('shortname', sym),
-                "type":        q.get('quoteType', ''),
-                "region":      "India" if is_indian else q.get('exchange', ''),
-                "currency":    q.get('currency', 'INR' if is_indian else ''),
+                "name":        name or sym,
+                "type":        "EQUITY",
+                "region":      region,
+                "currency":    currency,
                 "match_score": "1.0000",
             })
-        indian = [r for r in results if r['region'] == 'India']
-        return indian or results[:5]
-    except Exception:
-        pass
 
-    # Fallback: direct ticker lookup
-    for suffix in ['.NS', '.BO']:
-        sym = keywords.upper() + suffix
+    # Search with multiple query variants — no live ticker lookups
+    queries = [keywords]
+    if len(keywords) >= 3:
+        queries.append(keywords + ".NS")
+
+    for query in queries:
         try:
-            t = yf.Ticker(sym)
-            price = getattr(t.fast_info, 'last_price', None)
-            if price and float(price) > 0:
-                results.append({
-                    "symbol":      sym,
-                    "name":        sym,
-                    "type":        "EQUITY",
-                    "region":      "India",
-                    "currency":    "INR",
-                    "match_score": "1.0000",
-                })
+            search = yf.Search(query, max_results=10, news_count=0)
+            quotes = getattr(search, 'quotes', []) or []
+            for q in quotes:
+                sym = q.get('symbol', '')
+                is_indian = (
+                    q.get('exchange') in ('NSI', 'BSE', 'NMS', 'NSE')
+                    or '.NS' in sym
+                    or '.BO' in sym
+                )
+                if is_indian:
+                    add(sym, q.get('longname') or q.get('shortname', ''))
         except Exception:
             continue
+
+    # Fallback: return any results if no Indian ones found
+    if not results:
+        try:
+            search = yf.Search(keywords, max_results=5, news_count=0)
+            quotes = getattr(search, 'quotes', []) or []
+            for q in quotes:
+                sym = q.get('symbol', '')
+                add(sym,
+                    q.get('longname') or q.get('shortname', sym),
+                    region=q.get('exchange', ''),
+                    currency=q.get('currency', ''))
+        except Exception:
+            pass
 
     return results
 

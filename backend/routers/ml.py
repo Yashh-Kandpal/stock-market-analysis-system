@@ -27,12 +27,14 @@ from ml.predictor import (
 
 router  = APIRouter()
 logger  = logging.getLogger(__name__)
-MIN_ROWS = 60   # minimum data points needed for any model
+MIN_ROWS = 30   # minimum data points needed for any model
 
 
 # ─── shared data loader (same pattern as analysis router) ─────────────────────
 
 async def _load_records(symbol: str, days: int, db: AsyncSession) -> list[dict]:
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
     cutoff = datetime.utcnow() - timedelta(days=days)
     stmt = (
         select(StockPrice)
@@ -45,19 +47,19 @@ async def _load_records(symbol: str, days: int, db: AsyncSession) -> list[dict]:
     )
     rows = (await db.execute(stmt)).scalars().all()
 
-    if len(rows) >= MIN_ROWS:
+    expected = days * 5 / 7
+    if len(rows) >= expected * 0.8:
         return [
             {
                 "timestamp": r.timestamp.isoformat(),
-                "open":  r.open,  "high": r.high,
-                "low":   r.low,   "close": r.close,
+                "open": r.open, "high": r.high,
+                "low": r.low,   "close": r.close,
                 "volume": r.volume,
             }
             for r in rows
         ]
 
-    # Fallback: fetch from yfinance
-    logger.info(f"ML: fetching fresh data for {symbol}/{days}d")
+    logger.info(f"ML: fetching {days}d data for {symbol} from yfinance")
     try:
         fresh = await asyncio.to_thread(fetch_daily, symbol, days)
     except ValueError as e:
@@ -65,17 +67,28 @@ async def _load_records(symbol: str, days: int, db: AsyncSession) -> list[dict]:
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"yfinance error: {e}")
 
-    for r in fresh:
-        existing = (await db.execute(
-            select(StockPrice).where(and_(
-                StockPrice.symbol == r["symbol"],
-                StockPrice.timestamp == r["timestamp"],
-                StockPrice.interval == "1day",
-            ))
-        )).scalar()
-        if not existing:
-            db.add(StockPrice(**r))
-    await db.commit()
+    # Use INSERT ... ON CONFLICT DO NOTHING to safely handle duplicates
+    if fresh:
+        try:
+            insert_stmt = pg_insert(StockPrice).values([
+                {
+                    "symbol":    r["symbol"],
+                    "timestamp": r["timestamp"],
+                    "open":      r["open"],
+                    "high":      r["high"],
+                    "low":       r["low"],
+                    "close":     r["close"],
+                    "volume":    r["volume"],
+                    "interval":  r["interval"],
+                }
+                for r in fresh
+            ]).on_conflict_do_nothing(
+                index_elements=["symbol", "timestamp", "interval"]
+            )
+            await db.execute(insert_stmt)
+            await db.commit()
+        except Exception:
+            await db.rollback()
 
     return [
         {**r, "timestamp": r["timestamp"].isoformat() if isinstance(r["timestamp"], datetime) else r["timestamp"]}
@@ -117,6 +130,8 @@ async def get_linear(
         return {"symbol": symbol.upper(), "days": days,
                 **await predict_linear(records, symbol.upper(), days)}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -134,6 +149,8 @@ async def get_xgboost(
         return {"symbol": symbol.upper(), "days": days,
                 **await predict_xgboost(records, symbol.upper(), days)}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -153,6 +170,8 @@ async def get_isolation_forest(
         return {"symbol": symbol.upper(), "days": days,
                 **await predict_isolation_forest(records, symbol.upper(), days, contamination)}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

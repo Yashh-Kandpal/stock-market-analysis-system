@@ -4,10 +4,14 @@ Handles trend + seasonality automatically.
 Good for multi-week forecasts with uncertainty bands.
 """
 
-import numpy as np
-import pandas as pd
 import warnings
 warnings.filterwarnings('ignore')
+import logging
+logging.getLogger('prophet').setLevel(logging.ERROR)
+logging.getLogger('cmdstanpy').setLevel(logging.ERROR)
+
+import numpy as np
+import pandas as pd
 
 
 def run_prophet(records: list[dict], forecast_days: int = 30) -> dict:

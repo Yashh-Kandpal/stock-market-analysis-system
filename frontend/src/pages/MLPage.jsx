@@ -95,6 +95,12 @@ function ARIMAPanel({ symbol, days }) {
             </div>
           </div>
 
+          {data?.cached && data?.trained_at && (
+            <div className="cache-badge">
+              ✓ Cached · trained {Math.round((Date.now() - new Date(data.trained_at)) / 3600000)}h ago
+            </div>
+          )}
+
           <ResponsiveContainer width="100%" height={280}>
             <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />

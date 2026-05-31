@@ -4,14 +4,15 @@ Uses auto-selection of (p,d,q) parameters via AIC minimisation.
 Returns N-day price forecast with 95% confidence intervals.
 """
 
+import warnings
+warnings.filterwarnings('ignore')
+import logging
+logging.getLogger('statsmodels').setLevel(logging.ERROR)
+
 import numpy as np
 import pandas as pd
-import warnings
 from itertools import product
 from typing import Optional
-
-warnings.filterwarnings('ignore')
-
 
 def _select_arima_order(series: pd.Series, max_p: int = 3, max_q: int = 3) -> tuple:
     """

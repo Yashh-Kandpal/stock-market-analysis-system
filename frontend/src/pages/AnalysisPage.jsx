@@ -435,7 +435,16 @@ export default function AnalysisPage() {
         </button>
         <div className="ap-topbar-right">
           <span className="ap-label">Timeframe:</span>
-          <TimeframeSelector value={days} onChange={setDays} />
+          <TimeframeSelector 
+            value={days} 
+            onChange={setDays}
+            options={[
+              { label: '3M', days: 90 },
+              { label: '6M', days: 180 },
+              { label: '1Y', days: 365 },
+              { label: '2Y', days: 730 },
+            ]}
+          />
         </div>
       </div>
 

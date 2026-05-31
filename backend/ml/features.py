@@ -33,7 +33,11 @@ def build_features(records: list[dict]) -> pd.DataFrame:
     df = _volume_features(df)
     df = _lag_features(df)
     df = _targets(df)
-    df = df.replace([np.inf, -np.inf], np.nan).dropna()
+    df = df.replace([np.inf, -np.inf], np.nan)
+    # Only drop rows where core features are missing, fill others with 0
+    core_cols = ['return_1d', 'rsi_14', 'macd_hist', 'bb_pct_b', 'vol_ratio_20']
+    df = df.dropna(subset=core_cols)
+    df = df.fillna(0)
     return df
 
 
@@ -59,9 +63,12 @@ def _to_df(records: list[dict]) -> pd.DataFrame:
     df = pd.DataFrame(records)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df = df.sort_values('timestamp').set_index('timestamp')
+    # Drop non-numeric columns
+    for col in ['symbol', 'interval']:
+        if col in df.columns:
+            df = df.drop(columns=[col])
     for col in ['open', 'high', 'low', 'close', 'volume']:
         df[col] = pd.to_numeric(df[col], errors='coerce')
-    # drop zero-close rows (bad data)
     df = df[df['close'] > 0]
     return df
 
@@ -76,17 +83,15 @@ def _price_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _trend_features(df: pd.DataFrame) -> pd.DataFrame:
-    for w in [9, 20, 50, 200]:
+    # Only compute MAs we have enough data for
+    for w in [9, 20, 50]:          # removed 200 — needs 200+ rows
         df[f'sma_{w}']       = df['close'].rolling(w).mean()
         df[f'ema_{w}']       = df['close'].ewm(span=w, adjust=False).mean()
-        df[f'sma_{w}_ratio'] = df['close'] / df[f'sma_{w}']   # price / MA (>1 = above MA)
+        df[f'sma_{w}_ratio'] = df['close'] / df[f'sma_{w}']
 
-    # Golden/death cross signal (binary)
-    df['sma_20_50_cross'] = (df['sma_20'] > df['sma_50']).astype(int)
-    df['sma_50_200_cross'] = (df['sma_50'] > df['sma_200']).astype(int)
-
-    # Trend strength: slope of 20-day SMA normalised by price
-    df['sma20_slope'] = df['sma_20'].diff(5) / df['close']
+    df['sma_20_50_cross']  = (df['sma_20'] > df['sma_50']).astype(int)
+    df['sma_50_200_cross'] = 0   # placeholder — not enough data
+    df['sma20_slope']      = df['sma_20'].diff(5) / df['close']
     return df
 
 
@@ -191,4 +196,4 @@ def _targets(df: pd.DataFrame) -> pd.DataFrame:
 
 def get_feature_names(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if not c.startswith('target_') and
-            c not in ['open', 'high', 'low', 'close', 'volume']]
+            c not in ['open', 'high', 'low', 'close', 'volume', 'symbol']]

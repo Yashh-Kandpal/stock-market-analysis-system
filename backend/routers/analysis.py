@@ -179,7 +179,7 @@ async def get_rsi(
 @router.get("/{symbol}/macd")
 async def get_macd(
     symbol:         str,
-    days:           int = Query(180, ge=60, le=730),
+    days:           int = Query(180, ge=90, le=730),
     fast:           int = Query(12, ge=3,  le=50),
     slow:           int = Query(26, ge=10, le=100),
     signal_period:  int = Query(9,  ge=3,  le=30),
@@ -195,7 +195,7 @@ async def get_macd(
 @router.get("/{symbol}/support-resistance")
 async def get_support_resistance(
     symbol: str,
-    days:   int = Query(180, ge=60, le=730),
+    days:   int = Query(180, ge=90, le=730),
     window: int = Query(10, ge=3, le=30, description="Pivot window for local extrema"),
     db: AsyncSession = Depends(get_db),
 ):
