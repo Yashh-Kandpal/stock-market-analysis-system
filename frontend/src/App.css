@@ -1,97 +1,172 @@
+/* ── Layout ──────────────────────────────────────────────────────────────── */
 .app-layout {
   display: flex;
   min-height: 100vh;
+  transition: all 0.25s ease;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+:root {
+  --sidebar-expanded:  220px;
+  --sidebar-collapsed: 60px;
 }
 
 .sidebar {
-  width: 220px;
-  min-height: 100vh;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  padding: 24px 16px 16px;
   position: fixed;
   top: 0; left: 0; bottom: 0;
   z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  transition: width 0.25s ease, background 0.2s;
+  overflow: hidden;
 }
 
+.sidebar.expanded  { width: var(--sidebar-expanded); }
+.sidebar.collapsed { width: var(--sidebar-collapsed); }
+
+/* Main content offset */
+.app-layout.sidebar-expanded  .main-content { margin-left: var(--sidebar-expanded); }
+.app-layout.sidebar-collapsed .main-content { margin-left: var(--sidebar-collapsed); }
+
+.main-content {
+  flex: 1;
+  padding: 32px;
+  transition: margin-left 0.25s ease;
+  min-width: 0;
+}
+
+/* ── Brand ───────────────────────────────────────────────────────────────── */
 .sidebar-brand {
-  display: flex; align-items: center; gap: 10px;
-  font-size: 18px; font-weight: 700; color: var(--text);
-  margin-bottom: 36px; padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 18px;
+  min-height: 64px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
 }
+.brand-icon { flex-shrink: 0; }
+.brand-text {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  opacity: 1;
+  transition: opacity 0.2s;
+}
+.sidebar.collapsed .brand-text { opacity: 0; width: 0; }
 
+/* ── Nav links ───────────────────────────────────────────────────────────── */
 .sidebar-links {
-  display: flex; flex-direction: column; gap: 4px; flex: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 8px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .nav-link {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px; border-radius: 8px;
-  color: var(--muted); font-weight: 500; transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 13.5px;
+  transition: background 0.15s, color 0.15s;
   text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
 }
-.nav-link:hover { background: var(--surface2); color: var(--text); }
+.nav-link:hover  { background: var(--surface2); color: var(--text); }
 .nav-link.active { background: var(--accent-glow); color: var(--accent); }
 
-/* Bottom of sidebar */
+.nav-link.collapsed { justify-content: center; padding: 10px; }
+.nav-icon   { flex-shrink: 0; }
+.nav-label  { opacity: 1; transition: opacity 0.15s; }
+.sidebar.collapsed .nav-label { opacity: 0; width: 0; overflow: hidden; }
+
+/* ── Bottom section ──────────────────────────────────────────────────────── */
 .sidebar-bottom {
-  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
   border-top: 1px solid var(--border);
-  margin-top: 16px;
 }
 
-.badge-india { font-size: 12px; color: var(--muted); padding: 4px 8px; }
+/* theme toggle & collapse button */
+.sidebar-icon-btn,
+.sidebar-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  width: 100%;
+  text-align: left;
+}
+.sidebar-icon-btn:hover,
+.sidebar-toggle-btn:hover { background: var(--surface2); color: var(--text); }
+.sidebar-icon-btn.center,
+.sidebar.collapsed .sidebar-toggle-btn { justify-content: center; }
 
-/* User section */
+/* User info */
 .sidebar-user {
-  display: flex; align-items: center; gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  min-width: 0;
 }
+.sidebar-user.center { justify-content: center; flex-direction: column; gap: 4px; }
 
 .user-avatar {
-  width: 34px; height: 34px; border-radius: 50%;
+  width: 32px; height: 32px; border-radius: 50%;
   object-fit: cover; flex-shrink: 0;
   border: 2px solid var(--border);
 }
 .user-avatar-placeholder {
-  width: 34px; height: 34px; border-radius: 50%;
+  width: 32px; height: 32px; border-radius: 50%;
   background: var(--accent); color: #fff;
   display: flex; align-items: center; justify-content: center;
-  font-size: 14px; font-weight: 700; flex-shrink: 0;
+  font-size: 13px; font-weight: 700; flex-shrink: 0;
 }
-
-.user-info {
-  flex: 1; overflow: hidden; min-width: 0;
-}
-.user-name {
-  font-size: 12px; font-weight: 600; color: var(--text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.user-email {
-  font-size: 10px; color: var(--muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
+.user-info { flex: 1; overflow: hidden; min-width: 0; }
+.user-name  { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-email { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .logout-btn {
   color: var(--muted); padding: 5px; border-radius: 6px;
   cursor: pointer; transition: color 0.15s; flex-shrink: 0;
+  background: none; border: none;
 }
 .logout-btn:hover { color: var(--red); }
+.collapsed-logout { display: none; }
+.sidebar-user.center .collapsed-logout { display: flex; }
 
-/* Main content */
-.main-content {
-  margin-left: 220px;
-  flex: 1;
-  padding: 32px;
-  max-width: 1400px;
-}
-
+/* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .sidebar { width: 60px; padding: 16px 8px; }
-  .sidebar-brand span, .nav-link span,
-  .user-info, .logout-btn, .badge-india { display: none; }
-  .nav-link { justify-content: center; }
-  .main-content { margin-left: 60px; padding: 16px; }
-  .sidebar-user { justify-content: center; }
+  .sidebar.expanded { width: var(--sidebar-collapsed); }
+  .brand-text,
+  .nav-label,
+  .user-info,
+  .logout-btn:not(.collapsed-logout) { display: none; }
+  .nav-link         { justify-content: center; }
+  .main-content     { padding: 16px; }
+  .app-layout.sidebar-expanded .main-content  { margin-left: var(--sidebar-collapsed); }
 }

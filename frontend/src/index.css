@@ -1,18 +1,49 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root {
-  --bg: #0f1117;
-  --surface: #1a1d27;
-  --surface2: #22263a;
-  --border: #2a2f45;
-  --text: #e2e8f0;
-  --muted: #718096;
-  --accent: #6c8ef7;
+/* ── Dark theme (default) ──────────────────────────────────────────────────── */
+:root,
+[data-theme="dark"] {
+  --bg:          #0f1117;
+  --surface:     #1a1d27;
+  --surface2:    #22263a;
+  --border:      #2a2f45;
+  --text:        #e2e8f0;
+  --text-secondary: #cbd5e0;
+  --muted:       #718096;
+  --accent:      #6c8ef7;
   --accent-glow: rgba(108,142,247,0.15);
-  --green: #48bb78;
-  --red: #fc8181;
-  --yellow: #ecc94b;
-  --radius: 12px;
+  --green:       #48bb78;
+  --red:         #fc8181;
+  --yellow:      #ecc94b;
+  --radius:      12px;
+  --shadow:      0 4px 24px rgba(0,0,0,0.4);
+
+  /* chart tooltip */
+  --tooltip-bg:  #1a1d27;
+  --scrollbar-track: #1a1d27;
+  --scrollbar-thumb: #2a2f45;
+}
+
+/* ── Light theme ───────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg:          #f0f2f8;
+  --surface:     #ffffff;
+  --surface2:    #f7f8fc;
+  --border:      #e2e6f0;
+  --text:        #1a202c;
+  --text-secondary: #2d3748;
+  --muted:       #718096;
+  --accent:      #4f6ef7;
+  --accent-glow: rgba(79,110,247,0.1);
+  --green:       #38a169;
+  --red:         #e53e3e;
+  --yellow:      #d69e2e;
+  --radius:      12px;
+  --shadow:      0 4px 24px rgba(0,0,0,0.08);
+
+  --tooltip-bg:  #ffffff;
+  --scrollbar-track: #f0f2f8;
+  --scrollbar-thumb: #cbd5e0;
 }
 
 body {
@@ -22,12 +53,14 @@ body {
   font-size: 14px;
   line-height: 1.6;
   min-height: 100vh;
+  transition: background 0.2s, color 0.2s;
 }
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar        { width: 6px; height: 6px; }
+::-webkit-scrollbar-track  { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb  { background: var(--scrollbar-thumb); border-radius: 3px; }
 
-button { cursor: pointer; border: none; background: none; font-family: inherit; }
-input { font-family: inherit; }
-a { text-decoration: none; color: inherit; }
+button { cursor: pointer; border: none; background: none; font-family: inherit; color: inherit; }
+input  { font-family: inherit; }
+a      { text-decoration: none; color: inherit; }
+select { font-family: inherit; }

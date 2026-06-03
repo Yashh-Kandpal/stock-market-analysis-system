@@ -56,3 +56,14 @@ export const mlApi = {
   clearCache:      (symbol) =>
     api.delete(`/ml/${symbol}/cache`).then(r => r.data),
 }
+
+export const performanceApi = {
+  summary:     (days = 30) =>
+    api.get('/performance/summary',       { params: { days } }).then(r => r.data),
+  log:         (symbol, model, days = 30, limit = 50) =>
+    api.get('/performance/log',           { params: { symbol, model, days, limit } }).then(r => r.data),
+  bySymbol:    (symbol, days = 30) =>
+    api.get(`/performance/symbol/${symbol}`, { params: { days } }).then(r => r.data),
+  calibration: (days = 60) =>
+    api.get('/performance/calibration',   { params: { days } }).then(r => r.data),
+}

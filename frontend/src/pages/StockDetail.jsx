@@ -108,7 +108,7 @@ export default function StockDetail() {
           }
         }}>Data Table</button>
         <button onClick={() => navigate(`/analysis/${encodeURIComponent(decoded)}`)}>
-          Analysis
+          Statistical Analysis
         </button>
         <button onClick={() => navigate(`/ml/${encodeURIComponent(decoded)}`)}>
           ML Predictions

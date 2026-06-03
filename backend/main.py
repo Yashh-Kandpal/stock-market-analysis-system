@@ -23,10 +23,14 @@ from routers import stocks, watchlist, analysis, ml
 from routers.auth import router as auth_router
 from routers.search_history import router as search_history_router
 
+from backfill import backfill_actuals
+from routers.performance import router as performance_router
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting up — creating tables...")
     await create_tables()
+    await backfill_actuals()
     yield
     logger.info("Shutting down...")
 
@@ -51,6 +55,7 @@ app.include_router(watchlist.router,      prefix="/api/watchlist",      tags=["w
 app.include_router(analysis.router,       prefix="/api/analysis",       tags=["analysis"])
 app.include_router(ml.router,             prefix="/api/ml",             tags=["ml"])
 app.include_router(search_history_router, prefix="/api/search-history", tags=["search-history"])
+app.include_router(performance_router, prefix="/api/performance", tags=["performance"])
 
 
 @app.get("/")

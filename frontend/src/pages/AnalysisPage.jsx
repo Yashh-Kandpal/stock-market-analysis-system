@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, RefreshCw, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react'
+import { ArrowLeft, RefreshCw, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
 import {
   LineChart, Line, BarChart, Bar, ComposedChart,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -14,39 +14,56 @@ import StatCard from '../components/StatCard'
 import TimeframeSelector from '../components/TimeframeSelector'
 import './AnalysisPage.css'
 
-// ─── tiny helpers ──────────────────────────────────────────────────────────
+// ─── helpers ──────────────────────────────────────────────────────────────────
 const fmt = (v, d = 2) => (v == null ? '—' : Number(v).toFixed(d))
 const fmtTs = ts => {
   const d = new Date(ts)
   return isNaN(d) ? ts : d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })
 }
-const Panel = ({ title, children, controls }) => (
-  <Card className="analysis-panel">
-    <div className="ap-header">
-      <h3 className="ap-title">{title}</h3>
-      {controls && <div className="ap-controls">{controls}</div>}
-    </div>
-    {children}
-  </Card>
-)
 
-// ─── sub-panels ────────────────────────────────────────────────────────────
+// ─── accordion panel wrapper ──────────────────────────────────────────────────
+function AccordionPanel({ id, title, subtitle, badge, isOpen, onToggle, children, controls }) {
+  return (
+    <Card className={`analysis-panel accordion-panel ${isOpen ? 'open' : ''}`}>
+      <div className="accordion-header" onClick={() => onToggle(id)}>
+        <div className="accordion-left">
+          <span className="accordion-icon">
+            {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </span>
+          <div>
+            <div className="ap-title">{title}</div>
+            {subtitle && <div className="ap-subtitle-small">{subtitle}</div>}
+          </div>
+        </div>
+        <div className="accordion-right" onClick={e => e.stopPropagation()}>
+          {badge && <span className="accordion-badge">{badge}</span>}
+          {controls}
+        </div>
+      </div>
+      {isOpen && <div className="accordion-body">{children}</div>}
+    </Card>
+  )
+}
 
-function MovingAveragesPanel({ symbol, days }) {
-  const [data, setData] = useState(null)
+// ─── Moving Averages ──────────────────────────────────────────────────────────
+function MovingAveragesPanel({ symbol, days, isOpen, onToggle }) {
+  const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(false)
   const [windows, setWindows] = useState('9,20,50,200')
+  const [loaded, setLoaded] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
-    try { setData(await analysisApi.movingAverages(symbol, days, windows)) }
-    catch (e) { console.error(e) }
+    try {
+      setData(await analysisApi.movingAverages(symbol, days, windows))
+      setLoaded(true)
+    } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }, [symbol, days, windows])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { if (isOpen && !loaded) load() }, [isOpen, loaded, load])
+  useEffect(() => { setLoaded(false) }, [symbol, days])
 
-  // Merge all MA series by timestamp for a single chart dataset
   const chartData = (() => {
     if (!data?.series) return []
     const map = {}
@@ -57,20 +74,24 @@ function MovingAveragesPanel({ symbol, days }) {
         map[ts][key] = value
       })
     })
-    return Object.values(map).slice(-120) // last 120 points for readability
+    return Object.values(map).slice(-120)
   })()
 
   const MA_COLORS = { sma_9: '#a78bfa', sma_20: '#60a5fa', sma_50: '#34d399', sma_200: '#f97316', ema_9: '#c084fc', ema_20: '#93c5fd', ema_50: '#6ee7b7', ema_200: '#fdba74' }
   const activeKeys = Object.keys(MA_COLORS).filter(k => data?.series?.[k])
 
   return (
-    <Panel title="Moving Averages"
+    <AccordionPanel id="ma" title="Moving Averages" subtitle="SMA & EMA with golden/death cross signals"
+      isOpen={isOpen} onToggle={onToggle}
+      badge={data?.signals?.length > 0 ? `${data.signals.length} signal${data.signals.length > 1 ? 's' : ''}` : null}
       controls={
-        <div className="ap-win-input">
-          <input value={windows} onChange={e => setWindows(e.target.value)}
-            placeholder="9,20,50,200" className="win-input" />
-          <button className="ap-refresh-btn" onClick={load}><RefreshCw size={13} /></button>
-        </div>
+        isOpen && (
+          <div className="ap-win-input" onClick={e => e.stopPropagation()}>
+            <input value={windows} onChange={e => setWindows(e.target.value)}
+              placeholder="9,20,50,200" className="win-input" />
+            <button className="ap-refresh-btn" onClick={load}><RefreshCw size={13} /></button>
+          </div>
+        )
       }
     >
       {loading ? <Loader text="Computing MAs…" /> : (
@@ -80,7 +101,6 @@ function MovingAveragesPanel({ symbol, days }) {
               <StatCard key={k} label={k.replace('_', ' ').toUpperCase()} value={v} unit="₹" size="sm" />
             ))}
           </div>
-
           {data?.signals?.length > 0 && (
             <div className="signal-badges">
               {data.signals.map((s, i) => (
@@ -90,7 +110,6 @@ function MovingAveragesPanel({ symbol, days }) {
               ))}
             </div>
           )}
-
           {chartData.length > 0 && (
             <ResponsiveContainer width="100%" height={260}>
               <LineChart data={chartData}>
@@ -107,43 +126,52 @@ function MovingAveragesPanel({ symbol, days }) {
           )}
         </>
       )}
-    </Panel>
+    </AccordionPanel>
   )
 }
 
-function VolatilityPanel({ symbol, days }) {
-  const [data, setData] = useState(null)
+// ─── Volatility ───────────────────────────────────────────────────────────────
+function VolatilityPanel({ symbol, days, isOpen, onToggle }) {
+  const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(false)
   const [window_, setWindow] = useState(20)
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
+    if (!isOpen || loaded) return
     setLoading(true)
     analysisApi.volatility(symbol, days, window_)
-      .then(setData).catch(console.error).finally(() => setLoading(false))
-  }, [symbol, days, window_])
+      .then(d => { setData(d); setLoaded(true) })
+      .catch(console.error).finally(() => setLoading(false))
+  }, [isOpen, loaded, symbol, days, window_])
+  useEffect(() => { setLoaded(false) }, [symbol, days])
 
   const bbData = data?.bollinger_bands?.slice(-120) || []
 
   return (
-    <Panel title="Volatility & Bollinger Bands"
+    <AccordionPanel id="vol" title="Volatility & Bollinger Bands"
+      subtitle="Annualised volatility, ATR, Bollinger %B"
+      isOpen={isOpen} onToggle={onToggle}
+      badge={data?.latest ? `${fmt(data.latest.annualised_volatility_pct)}% vol` : null}
       controls={
-        <select className="ap-select" value={window_} onChange={e => setWindow(+e.target.value)}>
-          {[10, 14, 20, 30, 50].map(w => <option key={w} value={w}>Window {w}</option>)}
-        </select>
+        isOpen && (
+          <select className="ap-select" value={window_}
+            onChange={e => { setWindow(+e.target.value); setLoaded(false) }}
+            onClick={e => e.stopPropagation()}>
+            {[10, 14, 20, 30, 50].map(w => <option key={w} value={w}>Window {w}</option>)}
+          </select>
+        )
       }
     >
       {loading ? <Loader text="Computing volatility…" /> : data && (
         <>
           <div className="stat-row">
             <StatCard label="Ann. Volatility" value={data.latest?.annualised_volatility_pct} unit="%" />
-            <StatCard label="ATR" value={data.latest?.atr} unit="₹" hint={`${window_}-day avg true range`} />
-            <StatCard label="BB Width" value={data.latest?.bandwidth} unit="%" hint="band squeeze indicator" />
-            <StatCard label="Price Position" value={null}
-              signal={data.interpretation?.position}
+            <StatCard label="ATR" value={data.latest?.atr} unit="₹" hint={`${window_}-day`} />
+            <StatCard label="BB Width" value={data.latest?.bandwidth} unit="%" />
+            <StatCard label="Price Position" value={null} signal={data.interpretation?.position}
               hint={data.interpretation?.position?.replace(/_/g, ' ')} />
           </div>
-
-          <h4 className="ap-subtitle">Bollinger Bands</h4>
           {bbData.length > 0 && (
             <ResponsiveContainer width="100%" height={240}>
               <ComposedChart data={bbData.map(d => ({ ...d, ts: fmtTs(d.timestamp) }))}>
@@ -160,64 +188,147 @@ function VolatilityPanel({ symbol, days }) {
           )}
         </>
       )}
-    </Panel>
+    </AccordionPanel>
   )
 }
 
-function AnomalyPanel({ symbol, days }) {
+// ─── RSI & MACD ───────────────────────────────────────────────────────────────
+function RSIMACDPanel({ symbol, days, isOpen, onToggle }) {
+  const [rsiData, setRsi]   = useState(null)
+  const [macdData, setMacd] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen || loaded) return
+    setLoading(true)
+    Promise.all([analysisApi.rsi(symbol, days), analysisApi.macd(symbol, days)])
+      .then(([r, m]) => { setRsi(r); setMacd(m); setLoaded(true) })
+      .catch(console.error).finally(() => setLoading(false))
+  }, [isOpen, loaded, symbol, days])
+  useEffect(() => { setLoaded(false) }, [symbol, days])
+
+  const rsiSignalColor = rsiData?.signal === 'overbought' ? 'red' : rsiData?.signal === 'oversold' ? 'green' : 'muted'
+
+  return (
+    <AccordionPanel id="rsimacd" title="RSI & MACD"
+      subtitle="Momentum indicators — overbought/oversold signals & crossovers"
+      isOpen={isOpen} onToggle={onToggle}
+      badge={rsiData ? `RSI ${fmt(rsiData.latest, 0)}` : null}
+    >
+      {loading ? <Loader text="Computing momentum indicators…" /> : (
+        <>
+          {rsiData && (
+            <>
+              <div className="stat-row">
+                <StatCard label={`RSI (${rsiData.period})`} value={rsiData.latest}
+                  signal={rsiData.signal}
+                  hint={`OB: ${rsiData.levels.overbought} / OS: ${rsiData.levels.oversold}`} />
+                {macdData && (
+                  <>
+                    <StatCard label="MACD"      value={macdData.latest?.macd} />
+                    <StatCard label="Signal"    value={macdData.latest?.signal} />
+                    <StatCard label="Histogram" value={macdData.latest?.histogram} signal={macdData.trend} />
+                  </>
+                )}
+              </div>
+              <h4 className="ap-subtitle">RSI</h4>
+              <ResponsiveContainer width="100%" height={180}>
+                <ComposedChart data={rsiData.series?.slice(-120).map(d => ({ ...d, ts: fmtTs(d.timestamp) }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="ts" tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                  <YAxis domain={[0, 100]} tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }} />
+                  <ReferenceLine y={70} stroke="var(--red)"   strokeDasharray="3 3" label={{ value: 'OB 70', fill: 'var(--red)',   fontSize: 9 }} />
+                  <ReferenceLine y={30} stroke="var(--green)" strokeDasharray="3 3" label={{ value: 'OS 30', fill: 'var(--green)', fontSize: 9 }} />
+                  <ReferenceLine y={50} stroke="var(--border)" />
+                  <Line type="monotone" dataKey="value" stroke="#a78bfa" dot={false} strokeWidth={2} name="RSI" />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </>
+          )}
+          {macdData && (
+            <>
+              <h4 className="ap-subtitle" style={{ marginTop: 20 }}>
+                MACD ({macdData.params?.fast}/{macdData.params?.slow}/{macdData.params?.signal})
+              </h4>
+              <ResponsiveContainer width="100%" height={200}>
+                <ComposedChart data={macdData.series?.slice(-120).map(d => ({ ...d, ts: fmtTs(d.timestamp) }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="ts" tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                  <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }} />
+                  <ReferenceLine y={0} stroke="var(--border)" />
+                  <Bar dataKey="histogram" fill="#6c8ef7" opacity={0.5} isAnimationActive={false} name="Histogram" />
+                  <Line type="monotone" dataKey="macd"   stroke="#60a5fa" dot={false} strokeWidth={1.5} name="MACD" />
+                  <Line type="monotone" dataKey="signal" stroke="#f97316" dot={false} strokeWidth={1.5} name="Signal" />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </>
+          )}
+        </>
+      )}
+    </AccordionPanel>
+  )
+}
+
+// ─── Anomaly Detection ────────────────────────────────────────────────────────
+function AnomalyPanel({ symbol, days, isOpen, onToggle }) {
   const [data, setData]         = useState(null)
   const [loading, setLoading]   = useState(false)
   const [threshold, setThreshold] = useState(2.5)
+  const [loaded, setLoaded]     = useState(false)
 
   useEffect(() => {
+    if (!isOpen || loaded) return
     setLoading(true)
     analysisApi.anomalies(symbol, days, 20, threshold)
-      .then(setData).catch(console.error).finally(() => setLoading(false))
-  }, [symbol, days, threshold])
-
-  const zData = data?.zscore_series?.slice(-120) || []
+      .then(d => { setData(d); setLoaded(true) })
+      .catch(console.error).finally(() => setLoading(false))
+  }, [isOpen, loaded, symbol, days, threshold])
+  useEffect(() => { setLoaded(false) }, [symbol, days])
 
   return (
-    <Panel title="Z-Score Anomaly Detection"
+    <AccordionPanel id="anomaly" title="Z-Score Anomaly Detection"
+      subtitle="Flags unusual price and volume candles"
+      isOpen={isOpen} onToggle={onToggle}
+      badge={data ? `${data.summary?.price_anomaly_count} anomalies` : null}
       controls={
-        <select className="ap-select" value={threshold} onChange={e => setThreshold(+e.target.value)}>
-          {[1.5, 2.0, 2.5, 3.0, 3.5].map(t => <option key={t} value={t}>±{t}σ</option>)}
-        </select>
+        isOpen && (
+          <select className="ap-select" value={threshold}
+            onChange={e => { setThreshold(+e.target.value); setLoaded(false) }}
+            onClick={e => e.stopPropagation()}>
+            {[1.5, 2.0, 2.5, 3.0, 3.5].map(t => <option key={t} value={t}>±{t}σ</option>)}
+          </select>
+        )
       }
     >
       {loading ? <Loader text="Detecting anomalies…" /> : data && (
         <>
           <div className="stat-row">
-            <StatCard label="Price Anomalies" value={data.summary.price_anomaly_count} hint={`|z| > ${threshold}σ`} />
-            <StatCard label="Volume Anomalies" value={data.summary.volume_anomaly_count} hint={`|z| > ${threshold}σ`} />
-            <StatCard label="Combined" value={data.summary.combined_count} hint="both price & volume" />
-            <StatCard label="Total Candles" value={data.summary.total_candles} />
+            <StatCard label="Price Anomalies"  value={data.summary?.price_anomaly_count}  hint={`|z| > ${threshold}σ`} />
+            <StatCard label="Volume Anomalies" value={data.summary?.volume_anomaly_count} hint={`|z| > ${threshold}σ`} />
+            <StatCard label="Combined"         value={data.summary?.combined_count}       hint="both price & volume" />
+            <StatCard label="Total Candles"    value={data.summary?.total_candles} />
           </div>
-
-          {zData.length > 0 && (
-            <>
-              <h4 className="ap-subtitle">Rolling Z-Score</h4>
-              <ResponsiveContainer width="100%" height={200}>
-                <ComposedChart data={zData.map(d => ({ ...d, ts: fmtTs(d.timestamp) }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="ts" tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                  <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }} />
-                  <ReferenceLine y={threshold}  stroke="var(--red)"   strokeDasharray="4 2" label={{ value: `+${threshold}σ`, fill: 'var(--red)', fontSize: 10 }} />
-                  <ReferenceLine y={-threshold} stroke="var(--green)" strokeDasharray="4 2" label={{ value: `-${threshold}σ`, fill: 'var(--green)', fontSize: 10 }} />
-                  <ReferenceLine y={0} stroke="var(--border)" />
-                  <Line type="monotone" dataKey="price_z"  stroke="#60a5fa" dot={false} strokeWidth={1.5} name="Price Z" />
-                  <Line type="monotone" dataKey="volume_z" stroke="#f59e0b" dot={false} strokeWidth={1}   name="Volume Z" />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </>
+          {data.zscore_series?.length > 0 && (
+            <ResponsiveContainer width="100%" height={200}>
+              <ComposedChart data={data.zscore_series.slice(-120).map(d => ({ ...d, ts: fmtTs(d.timestamp) }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="ts" tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} />
+                <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }} />
+                <ReferenceLine y={threshold}  stroke="var(--red)"   strokeDasharray="4 2" label={{ value: `+${threshold}σ`, fill: 'var(--red)',   fontSize: 10 }} />
+                <ReferenceLine y={-threshold} stroke="var(--green)" strokeDasharray="4 2" label={{ value: `-${threshold}σ`, fill: 'var(--green)', fontSize: 10 }} />
+                <ReferenceLine y={0} stroke="var(--border)" />
+                <Line type="monotone" dataKey="price_z"  stroke="#60a5fa" dot={false} strokeWidth={1.5} name="Price Z" />
+                <Line type="monotone" dataKey="volume_z" stroke="#f59e0b" dot={false} strokeWidth={1}   name="Volume Z" />
+              </ComposedChart>
+            </ResponsiveContainer>
           )}
-
           {data.combined_anomalies?.length > 0 && (
             <div className="anomaly-list">
-              <h4 className="ap-subtitle">
-                <AlertTriangle size={13} style={{ color: 'var(--yellow)' }} /> Combined Anomalies
-              </h4>
+              <h4 className="ap-subtitle"><AlertTriangle size={13} style={{ color: 'var(--yellow)' }} /> Combined Anomalies</h4>
               <table className="anomaly-table">
                 <thead><tr><th>Date</th><th>Close</th><th>Price Z</th><th>Volume Z</th><th>Significance</th></tr></thead>
                 <tbody>
@@ -236,175 +347,103 @@ function AnomalyPanel({ symbol, days }) {
           )}
         </>
       )}
-    </Panel>
+    </AccordionPanel>
   )
 }
 
-function RSIMACDPanel({ symbol, days }) {
-  const [rsiData, setRsi]   = useState(null)
-  const [macdData, setMacd] = useState(null)
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    setLoading(true)
-    Promise.all([
-      analysisApi.rsi(symbol, days),
-      analysisApi.macd(symbol, days),
-    ]).then(([r, m]) => { setRsi(r); setMacd(m) })
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [symbol, days])
-
-  const rsiChartData  = rsiData?.series?.slice(-120)  || []
-  const macdChartData = macdData?.series?.slice(-120) || []
-
-  return (
-    <Panel title="RSI & MACD">
-      {loading ? <Loader text="Computing momentum indicators…" /> : (
-        <>
-          {/* RSI */}
-          {rsiData && (
-            <>
-              <div className="stat-row">
-                <StatCard label={`RSI (${rsiData.period})`} value={rsiData.latest}
-                  signal={rsiData.signal}
-                  hint={`OB: ${rsiData.levels.overbought} / OS: ${rsiData.levels.oversold}`} />
-                {macdData && (
-                  <>
-                    <StatCard label="MACD" value={macdData.latest?.macd} />
-                    <StatCard label="Signal" value={macdData.latest?.signal} />
-                    <StatCard label="Histogram" value={macdData.latest?.histogram}
-                      signal={macdData.trend} />
-                  </>
-                )}
-              </div>
-
-              <h4 className="ap-subtitle">RSI</h4>
-              <ResponsiveContainer width="100%" height={180}>
-                <ComposedChart data={rsiChartData.map(d => ({ ...d, ts: fmtTs(d.timestamp) }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="ts" tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                  <YAxis domain={[0, 100]} tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }} />
-                  <ReferenceLine y={70} stroke="var(--red)"   strokeDasharray="3 3" label={{ value: 'OB 70', fill: 'var(--red)',   fontSize: 9 }} />
-                  <ReferenceLine y={30} stroke="var(--green)" strokeDasharray="3 3" label={{ value: 'OS 30', fill: 'var(--green)', fontSize: 9 }} />
-                  <ReferenceLine y={50} stroke="var(--border)" />
-                  <Line type="monotone" dataKey="value" stroke="#a78bfa" dot={false} strokeWidth={2} name="RSI" />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </>
-          )}
-
-          {/* MACD */}
-          {macdData && (
-            <>
-              <h4 className="ap-subtitle" style={{ marginTop: 20 }}>MACD ({macdData.params.fast}/{macdData.params.slow}/{macdData.params.signal})</h4>
-              <ResponsiveContainer width="100%" height={200}>
-                <ComposedChart data={macdChartData.map(d => ({ ...d, ts: fmtTs(d.timestamp) }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="ts" tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                  <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }} />
-                  <ReferenceLine y={0} stroke="var(--border)" />
-                  <Bar dataKey="histogram" name="Histogram"
-                    fill="#6c8ef7" opacity={0.5}
-                    label={false}
-                    // color bars by sign
-                    isAnimationActive={false}
-                  />
-                  <Line type="monotone" dataKey="macd"   stroke="#60a5fa" dot={false} strokeWidth={1.5} name="MACD" />
-                  <Line type="monotone" dataKey="signal" stroke="#f97316" dot={false} strokeWidth={1.5} name="Signal" />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </>
-          )}
-        </>
-      )}
-    </Panel>
-  )
-}
-
-function SupportResistancePanel({ symbol, days }) {
+// ─── Support & Resistance ─────────────────────────────────────────────────────
+function SupportResistancePanel({ symbol, days, isOpen, onToggle }) {
   const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
+    if (!isOpen || loaded) return
     setLoading(true)
     analysisApi.supportResistance(symbol, days)
-      .then(setData).catch(console.error).finally(() => setLoading(false))
-  }, [symbol, days])
+      .then(d => { setData(d); setLoaded(true) })
+      .catch(console.error).finally(() => setLoading(false))
+  }, [isOpen, loaded, symbol, days])
+  useEffect(() => { setLoaded(false) }, [symbol, days])
 
-  if (loading) return <Panel title="Support & Resistance"><Loader text="Computing levels…" /></Panel>
-  if (!data)   return null
-
-  const pp = data.pivot_points
-  const price = data.current_price
+  const pp = data?.pivot_points
+  const price = data?.current_price
 
   return (
-    <Panel title="Support & Resistance">
-      <div className="sr-grid">
-        <div className="sr-col">
-          <div className="sr-col-title resist">Resistance</div>
-          {[pp.r3, pp.r2, pp.r1].map((v, i) => (
-            <div key={i} className={`sr-level resist ${price > v ? 'breached' : ''}`}>
-              <span className="sr-label">R{3 - i}</span>
-              <span className="sr-price">₹{fmt(v)}</span>
-              {price > v && <span className="sr-tag">✓ above</span>}
-            </div>
-          ))}
+    <AccordionPanel id="sr" title="Support & Resistance"
+      subtitle="Pivot points R1–R3 and S1–S3"
+      isOpen={isOpen} onToggle={onToggle}
+      badge={pp ? `Pivot ₹${fmt(pp.pivot)}` : null}
+    >
+      {loading ? <Loader text="Computing levels…" /> : data && pp && (
+        <div className="sr-grid">
+          <div className="sr-col">
+            <div className="sr-col-title resist">Resistance</div>
+            {[pp.r3, pp.r2, pp.r1].map((v, i) => (
+              <div key={i} className={`sr-level resist ${price > v ? 'breached' : ''}`}>
+                <span className="sr-label">R{3 - i}</span>
+                <span className="sr-price">₹{fmt(v)}</span>
+                {price > v && <span className="sr-tag">✓ above</span>}
+              </div>
+            ))}
+          </div>
+          <div className="sr-pivot">
+            <div className="sr-pivot-label">Pivot</div>
+            <div className="sr-pivot-price">₹{fmt(pp.pivot)}</div>
+            <div className="sr-current">Current: ₹{fmt(price)}</div>
+          </div>
+          <div className="sr-col">
+            <div className="sr-col-title support">Support</div>
+            {[pp.s1, pp.s2, pp.s3].map((v, i) => (
+              <div key={i} className={`sr-level support ${price < v ? 'breached' : ''}`}>
+                <span className="sr-label">S{i + 1}</span>
+                <span className="sr-price">₹{fmt(v)}</span>
+                {price < v && <span className="sr-tag">✓ below</span>}
+              </div>
+            ))}
+          </div>
         </div>
-
-        <div className="sr-pivot">
-          <div className="sr-pivot-label">Pivot</div>
-          <div className="sr-pivot-price">₹{fmt(pp.pivot)}</div>
-          <div className="sr-current">Current: ₹{fmt(price)}</div>
-        </div>
-
-        <div className="sr-col">
-          <div className="sr-col-title support">Support</div>
-          {[pp.s1, pp.s2, pp.s3].map((v, i) => (
-            <div key={i} className={`sr-level support ${price < v ? 'breached' : ''}`}>
-              <span className="sr-label">S{i + 1}</span>
-              <span className="sr-price">₹{fmt(v)}</span>
-              {price < v && <span className="sr-tag">✓ below</span>}
-            </div>
-          ))}
-        </div>
-      </div>
-    </Panel>
+      )}
+    </AccordionPanel>
   )
 }
 
-function ReturnsPanel({ symbol, days }) {
+// ─── Returns & Risk ───────────────────────────────────────────────────────────
+function ReturnsPanel({ symbol, days, isOpen, onToggle }) {
   const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
+    if (!isOpen || loaded) return
     setLoading(true)
     analysisApi.returns(symbol, Math.min(days, 365))
-      .then(setData).catch(console.error).finally(() => setLoading(false))
-  }, [symbol, days])
-
-  const ddData = data?.drawdown_series?.slice(-200) || []
+      .then(d => { setData(d); setLoaded(true) })
+      .catch(console.error).finally(() => setLoading(false))
+  }, [isOpen, loaded, symbol, days])
+  useEffect(() => { setLoaded(false) }, [symbol, days])
 
   return (
-    <Panel title="Returns & Risk">
+    <AccordionPanel id="returns" title="Returns & Risk"
+      subtitle="Sharpe ratio, max drawdown, skewness, win rate"
+      isOpen={isOpen} onToggle={onToggle}
+      badge={data ? `Sharpe ${fmt(data.sharpe_ratio)}` : null}
+    >
       {loading ? <Loader text="Analysing returns…" /> : data && (
         <>
           <div className="stat-row">
-            <StatCard label="Total Return"     value={data.total_return_pct}         unit="%" />
-            <StatCard label="Ann. Return"      value={data.annualised_return_pct}    unit="%" />
-            <StatCard label="Sharpe Ratio"     value={data.sharpe_ratio}             hint="rf = 6%" />
-            <StatCard label="Max Drawdown"     value={data.max_drawdown_pct}         unit="%" />
-            <StatCard label="Win Rate"         value={data.win_rate_pct}             unit="%" />
-            <StatCard label="Daily Std Dev"    value={data.std_daily_return_pct}     unit="%" />
-            <StatCard label="Skewness"         value={data.skewness}                 hint=">0 right-tailed" />
-            <StatCard label="Kurtosis"         value={data.kurtosis}                 hint=">3 fat tails" />
+            <StatCard label="Total Return"      value={data.total_return_pct}          unit="%" />
+            <StatCard label="Ann. Return"       value={data.annualised_return_pct}     unit="%" />
+            <StatCard label="Sharpe Ratio"      value={data.sharpe_ratio}              hint="rf = 6%" />
+            <StatCard label="Max Drawdown"      value={data.max_drawdown_pct}          unit="%" />
+            <StatCard label="Win Rate"          value={data.win_rate_pct}              unit="%" />
+            <StatCard label="Daily Std Dev"     value={data.std_daily_return_pct}      unit="%" />
+            <StatCard label="Skewness"          value={data.skewness}                  hint=">0 right-tailed" />
+            <StatCard label="Kurtosis"          value={data.kurtosis}                  hint=">3 fat tails" />
           </div>
-
           <h4 className="ap-subtitle">Drawdown from Peak</h4>
           <ResponsiveContainer width="100%" height={180}>
-            <AreaChart data={ddData.map(d => ({ ...d, ts: fmtTs(d.timestamp) }))}>
+            <AreaChart data={data.drawdown_series?.slice(-200).map(d => ({ ...d, ts: fmtTs(d.timestamp) }))}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="ts" tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
               <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `${v.toFixed(0)}%`} />
@@ -415,17 +454,30 @@ function ReturnsPanel({ symbol, days }) {
           </ResponsiveContainer>
         </>
       )}
-    </Panel>
+    </AccordionPanel>
   )
 }
 
-// ─── main page ─────────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
+const ALL_PANELS = ['ma', 'vol', 'rsimacd', 'anomaly', 'sr', 'returns']
 
 export default function AnalysisPage() {
   const { symbol } = useParams()
   const navigate   = useNavigate()
   const decoded    = decodeURIComponent(symbol)
-  const [days, setDays] = useState(180)
+  const [days, setDays]       = useState(180)
+  const [openPanels, setOpen] = useState(new Set())
+
+  const toggle = (id) => {
+    setOpen(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const expandAll   = () => setOpen(new Set(ALL_PANELS))
+  const collapseAll = () => setOpen(new Set())
 
   return (
     <div className="analysis-page">
@@ -435,35 +487,35 @@ export default function AnalysisPage() {
         </button>
         <div className="ap-topbar-right">
           <span className="ap-label">Timeframe:</span>
-          <TimeframeSelector 
-            value={days} 
-            onChange={setDays}
-            options={[
-              { label: '3M', days: 90 },
-              { label: '6M', days: 180 },
-              { label: '1Y', days: 365 },
-              { label: '2Y', days: 730 },
-            ]}
-          />
+          <TimeframeSelector value={days} onChange={setDays} options={[
+            { label: '3M', days: 90 },
+            { label: '6M', days: 180 },
+            { label: '1Y', days: 365 },
+            { label: '2Y', days: 730 },
+          ]} />
         </div>
       </div>
 
       <div className="ap-page-header">
-        <h1>Statistical Analysis</h1>
-        <p className="page-sub">{decoded} · {days}-day lookback window</p>
+        <div className="ap-header-row">
+          <div>
+            <h1>Statistical Analysis</h1>
+            <p className="page-sub">{decoded} · {days}-day lookback · Click any section to expand</p>
+          </div>
+          <div className="ap-expand-btns">
+            <button className="ap-expand-btn" onClick={expandAll}>Expand all</button>
+            <button className="ap-expand-btn" onClick={collapseAll}>Collapse all</button>
+          </div>
+        </div>
       </div>
 
-      <div className="analysis-grid">
-        <div className="analysis-col-wide">
-          <MovingAveragesPanel symbol={decoded} days={days} />
-          <VolatilityPanel     symbol={decoded} days={days} />
-          <RSIMACDPanel        symbol={decoded} days={days} />
-          <AnomalyPanel        symbol={decoded} days={days} />
-        </div>
-        <div className="analysis-col-narrow">
-          <SupportResistancePanel symbol={decoded} days={days} />
-          <ReturnsPanel           symbol={decoded} days={days} />
-        </div>
+      <div className="analysis-accordion">
+        <MovingAveragesPanel    symbol={decoded} days={days} isOpen={openPanels.has('ma')}      onToggle={toggle} />
+        <VolatilityPanel        symbol={decoded} days={days} isOpen={openPanels.has('vol')}     onToggle={toggle} />
+        <RSIMACDPanel           symbol={decoded} days={days} isOpen={openPanels.has('rsimacd')} onToggle={toggle} />
+        <AnomalyPanel           symbol={decoded} days={days} isOpen={openPanels.has('anomaly')} onToggle={toggle} />
+        <SupportResistancePanel symbol={decoded} days={days} isOpen={openPanels.has('sr')}      onToggle={toggle} />
+        <ReturnsPanel           symbol={decoded} days={days} isOpen={openPanels.has('returns')} onToggle={toggle} />
       </div>
     </div>
   )

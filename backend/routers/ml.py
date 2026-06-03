@@ -1,14 +1,6 @@
 """
 ML Router — /api/ml/{symbol}/...
-
-Endpoints:
-  GET /api/ml/{symbol}/arima          → ARIMA price forecast
-  GET /api/ml/{symbol}/linear         → LR direction prediction
-  GET /api/ml/{symbol}/xgboost        → XGBoost direction + 5d prediction
-  GET /api/ml/{symbol}/isolation-forest → Isolation Forest anomalies
-  GET /api/ml/{symbol}/prophet        → Prophet multi-week forecast
-  GET /api/ml/{symbol}/summary        → All models, latest predictions only
-  DELETE /api/ml/{symbol}/cache       → Clear cached results
+Updated to log predictions automatically after each successful model run.
 """
 
 import asyncio
@@ -24,13 +16,12 @@ from ml.predictor import (
     predict_arima, predict_linear, predict_xgboost,
     predict_isolation_forest, predict_prophet, clear_cache,
 )
+from prediction_logger import log_prediction
 
 router  = APIRouter()
 logger  = logging.getLogger(__name__)
-MIN_ROWS = 30   # minimum data points needed for any model
+MIN_ROWS = 30
 
-
-# ─── shared data loader (same pattern as analysis router) ─────────────────────
 
 async def _load_records(symbol: str, days: int, db: AsyncSession) -> list[dict]:
     from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -39,7 +30,7 @@ async def _load_records(symbol: str, days: int, db: AsyncSession) -> list[dict]:
     stmt = (
         select(StockPrice)
         .where(and_(
-            StockPrice.symbol == symbol,
+            StockPrice.symbol   == symbol,
             StockPrice.interval == "1day",
             StockPrice.timestamp >= cutoff,
         ))
@@ -53,7 +44,7 @@ async def _load_records(symbol: str, days: int, db: AsyncSession) -> list[dict]:
             {
                 "timestamp": r.timestamp.isoformat(),
                 "open": r.open, "high": r.high,
-                "low": r.low,   "close": r.close,
+                "low":  r.low,  "close": r.close,
                 "volume": r.volume,
             }
             for r in rows
@@ -67,7 +58,6 @@ async def _load_records(symbol: str, days: int, db: AsyncSession) -> list[dict]:
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"yfinance error: {e}")
 
-    # Use INSERT ... ON CONFLICT DO NOTHING to safely handle duplicates
     if fresh:
         try:
             insert_stmt = pg_insert(StockPrice).values([
@@ -96,23 +86,33 @@ async def _load_records(symbol: str, days: int, db: AsyncSession) -> list[dict]:
     ]
 
 
-# ─── endpoints ────────────────────────────────────────────────────────────────
+def _get_prev_close(records: list[dict]) -> float | None:
+    """Get the most recent closing price from records."""
+    if not records:
+        return None
+    try:
+        return float(records[-1]["close"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
 
 @router.get("/{symbol}/arima")
 async def get_arima(
-    symbol:       str,
-    days:         int = Query(365, ge=90,  le=730, description="Training window in days"),
-    forecast_days: int = Query(14,  ge=5,   le=30,  description="How many days to forecast"),
+    symbol:        str,
+    days:          int = Query(365, ge=90,  le=730),
+    forecast_days: int = Query(14,  ge=5,   le=30),
     db: AsyncSession = Depends(get_db),
 ):
-    """ARIMA price forecast with confidence intervals."""
     records = await _load_records(symbol.upper(), days, db)
     if len(records) < MIN_ROWS:
-        raise HTTPException(status_code=422, detail=f"Only {len(records)} data points — need {MIN_ROWS}+")
+        raise HTTPException(status_code=422, detail=f"Only {len(records)} data points")
     try:
-        return {"symbol": symbol.upper(), "days": days,
-                **await predict_arima(records, symbol.upper(), days, forecast_days)}
+        result = await predict_arima(records, symbol.upper(), days, forecast_days, db)
+        # Log prediction silently
+        await log_prediction(db, symbol.upper(), "arima", result, _get_prev_close(records))
+        return {"symbol": symbol.upper(), "days": days, **result}
     except Exception as e:
+        import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -122,16 +122,15 @@ async def get_linear(
     days:   int = Query(365, ge=90, le=730),
     db: AsyncSession = Depends(get_db),
 ):
-    """Linear + Logistic Regression: next-day direction prediction."""
     records = await _load_records(symbol.upper(), days, db)
     if len(records) < MIN_ROWS:
-        raise HTTPException(status_code=422, detail=f"Only {len(records)} data points — need {MIN_ROWS}+")
+        raise HTTPException(status_code=422, detail=f"Only {len(records)} data points")
     try:
-        return {"symbol": symbol.upper(), "days": days,
-                **await predict_linear(records, symbol.upper(), days)}
+        result = await predict_linear(records, symbol.upper(), days, db)
+        await log_prediction(db, symbol.upper(), "linear", result, _get_prev_close(records))
+        return {"symbol": symbol.upper(), "days": days, **result}
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -141,16 +140,15 @@ async def get_xgboost(
     days:   int = Query(365, ge=90, le=730),
     db: AsyncSession = Depends(get_db),
 ):
-    """XGBoost: next-day + 5-day direction prediction with feature importance."""
     records = await _load_records(symbol.upper(), days, db)
     if len(records) < MIN_ROWS:
-        raise HTTPException(status_code=422, detail=f"Only {len(records)} data points — need {MIN_ROWS}+")
+        raise HTTPException(status_code=422, detail=f"Only {len(records)} data points")
     try:
-        return {"symbol": symbol.upper(), "days": days,
-                **await predict_xgboost(records, symbol.upper(), days)}
+        result = await predict_xgboost(records, symbol.upper(), days, db)
+        await log_prediction(db, symbol.upper(), "xgboost", result, _get_prev_close(records))
+        return {"symbol": symbol.upper(), "days": days, **result}
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -158,38 +156,37 @@ async def get_xgboost(
 async def get_isolation_forest(
     symbol:        str,
     days:          int   = Query(365,  ge=90,  le=730),
-    contamination: float = Query(0.05, ge=0.01, le=0.2,
-                                 description="Expected fraction of anomalies (0.01–0.20)"),
+    contamination: float = Query(0.05, ge=0.01, le=0.2),
     db: AsyncSession = Depends(get_db),
 ):
-    """Isolation Forest multi-dimensional anomaly detection."""
     records = await _load_records(symbol.upper(), days, db)
     if len(records) < MIN_ROWS:
-        raise HTTPException(status_code=422, detail=f"Only {len(records)} data points — need {MIN_ROWS}+")
+        raise HTTPException(status_code=422, detail=f"Only {len(records)} data points")
     try:
-        return {"symbol": symbol.upper(), "days": days,
-                **await predict_isolation_forest(records, symbol.upper(), days, contamination)}
+        result = await predict_isolation_forest(records, symbol.upper(), days, contamination, db)
+        # Isolation forest is anomaly detection, not directional — skip logging
+        return {"symbol": symbol.upper(), "days": days, **result}
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{symbol}/prophet")
 async def get_prophet(
     symbol:        str,
-    days:          int = Query(730, ge=180, le=1460, description="Training window (Prophet needs more data)"),
+    days:          int = Query(730, ge=180, le=1460),
     forecast_days: int = Query(30,  ge=7,   le=90),
     db: AsyncSession = Depends(get_db),
 ):
-    """Prophet multi-week forecast with trend + seasonality decomposition."""
     records = await _load_records(symbol.upper(), days, db)
     if len(records) < 60:
-        raise HTTPException(status_code=422, detail=f"Only {len(records)} data points — need 60+")
+        raise HTTPException(status_code=422, detail=f"Only {len(records)} data points")
     try:
-        return {"symbol": symbol.upper(), "days": days,
-                **await predict_prophet(records, symbol.upper(), days, forecast_days)}
+        result = await predict_prophet(records, symbol.upper(), days, forecast_days, db)
+        await log_prediction(db, symbol.upper(), "prophet", result, _get_prev_close(records))
+        return {"symbol": symbol.upper(), "days": days, **result}
     except Exception as e:
+        import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -199,14 +196,9 @@ async def get_ml_summary(
     days:   int = Query(365, ge=90, le=730),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Runs all models and returns only their prediction cards (no series data).
-    Used for the ML overview panel on the stock detail page.
-    Runs models in parallel for speed.
-    """
     records = await _load_records(symbol.upper(), days, db)
     if len(records) < MIN_ROWS:
-        raise HTTPException(status_code=422, detail=f"Not enough data")
+        raise HTTPException(status_code=422, detail="Not enough data")
 
     sym = symbol.upper()
 
@@ -218,28 +210,29 @@ async def get_ml_summary(
             return name, {"error": str(e)}
 
     results = await asyncio.gather(
-        _safe(predict_arima(records, sym, days, 14),          "arima"),
-        _safe(predict_linear(records, sym, days),             "linear"),
-        _safe(predict_xgboost(records, sym, days),            "xgboost"),
-        _safe(predict_isolation_forest(records, sym, days),   "isolation_forest"),
+        _safe(predict_arima(records, sym, days, 14, db),        "arima"),
+        _safe(predict_linear(records, sym, days, db),           "linear"),
+        _safe(predict_xgboost(records, sym, days, db),          "xgboost"),
+        _safe(predict_isolation_forest(records, sym, days, db=db), "isolation_forest"),
     )
 
+    prev_close = _get_prev_close(records)
     out = {"symbol": sym, "days": days}
     for name, res in results:
-        if "error" in res:
-            out[name] = res
-        else:
-            # Strip heavy series arrays — keep only prediction cards
+        if "error" not in res:
+            if name in ("arima", "linear", "xgboost", "prophet"):
+                await log_prediction(db, sym, name, res, prev_close)
             stripped = {k: v for k, v in res.items()
                         if k not in ("historical", "forecast", "score_series",
                                      "anomalies", "returns_series", "drawdown_series")}
             out[name] = stripped
+        else:
+            out[name] = res
 
     return out
 
 
 @router.delete("/{symbol}/cache")
 async def clear_model_cache(symbol: str):
-    """Clear cached ML results for a symbol (forces retrain on next request)."""
     clear_cache(symbol.upper())
     return {"message": f"Cache cleared for {symbol.upper()}"}

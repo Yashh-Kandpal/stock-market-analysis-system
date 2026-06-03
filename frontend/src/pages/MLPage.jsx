@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, RefreshCw, Info } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Info, ChevronDown, ChevronRight } from 'lucide-react'
 import {
   ComposedChart, Line, Area, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine, Legend, AreaChart, Scatter
@@ -20,105 +20,93 @@ const fmtDate = ts => {
   return isNaN(d) ? ts : d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })
 }
 
-const Panel = ({ title, subtitle, children, controls, loading, onRefresh }) => (
-  <Card className="ml-panel">
-    <div className="mp-header">
-      <div>
-        <h3 className="mp-title">{title}</h3>
-        {subtitle && <p className="mp-subtitle">{subtitle}</p>}
+// ─── Accordion wrapper ────────────────────────────────────────────────────────
+function AccordionPanel({ id, title, subtitle, badge, isOpen, onToggle, children, controls }) {
+  return (
+    <Card className={`ml-panel accordion-panel ${isOpen ? 'open' : ''}`}>
+      <div className="accordion-header" onClick={() => onToggle(id)}>
+        <div className="accordion-left">
+          <span className="accordion-icon">
+            {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </span>
+          <div>
+            <div className="mp-title">{title}</div>
+            {subtitle && <div className="mp-subtitle-small">{subtitle}</div>}
+          </div>
+        </div>
+        <div className="accordion-right" onClick={e => e.stopPropagation()}>
+          {badge && <span className="accordion-badge">{badge}</span>}
+          {controls}
+        </div>
       </div>
-      <div className="mp-controls">
-        {controls}
-        {onRefresh && (
-          <button className="mp-refresh" onClick={onRefresh} title="Refresh">
-            <RefreshCw size={13} className={loading ? 'spinning' : ''} />
-          </button>
-        )}
-      </div>
-    </div>
-    {loading ? <Loader text="Training model…" /> : children}
-  </Card>
-)
+      {isOpen && <div className="accordion-body">{children}</div>}
+    </Card>
+  )
+}
 
-// ─── ARIMA Panel ──────────────────────────────────────────────────────────────
-function ARIMAPanel({ symbol, days }) {
+// ─── ARIMA ────────────────────────────────────────────────────────────────────
+function ARIMAPanel({ symbol, days, isOpen, onToggle }) {
   const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(false)
   const [fcDays, setFcDays] = useState(14)
+  const [loaded, setLoaded] = useState(false)
 
   const load = async () => {
     setLoading(true)
-    try { setData(await mlApi.arima(symbol, days, fcDays)) }
+    try { setData(await mlApi.arima(symbol, days, fcDays)); setLoaded(true) }
     catch (e) { console.error(e) }
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [symbol, days, fcDays])
+  useEffect(() => { if (isOpen && !loaded) load() }, [isOpen, loaded])
+  useEffect(() => { setLoaded(false) }, [symbol, days, fcDays])
 
   const chartData = [
-    ...(data?.historical || []).map(d => ({
-      date: fmtDate(d.date), actual: d.actual, type: 'historical'
-    })),
-    ...(data?.forecast || []).map(d => ({
-      date:       fmtDate(d.date),
-      predicted:  d.predicted,
-      lower:      d.lower_95,
-      upper:      d.upper_95,
-      type:       'forecast'
-    })),
+    ...(data?.historical || []).map(d => ({ date: fmtDate(d.date), actual: d.actual })),
+    ...(data?.forecast   || []).map(d => ({ date: fmtDate(d.date), predicted: d.predicted, lower: d.lower_95, upper: d.upper_95 })),
   ]
-
   const lastActual    = data?.historical?.[data.historical.length - 1]?.actual
   const firstForecast = data?.forecast?.[0]?.predicted
-  const forecastUp    = firstForecast > lastActual
 
   return (
-    <Panel title="ARIMA Price Forecast"
-      subtitle={`Auto-selected order: ${data ? `(${data.order?.join(',')})` : '…'} · AIC: ${data?.aic ?? '…'}`}
-      loading={loading}
-      onRefresh={load}
+    <AccordionPanel id="arima" title="ARIMA Price Forecast"
+      subtitle={data ? `Order (${data.order?.join(',')}) · AIC ${data.aic}` : 'Auto-selected ARIMA order'}
+      isOpen={isOpen} onToggle={onToggle}
+      badge={data ? `${data.forecast?.length}d forecast` : null}
       controls={
-        <select className="mp-select" value={fcDays} onChange={e => setFcDays(+e.target.value)}>
-          {[7, 14, 21, 30].map(d => <option key={d} value={d}>{d}d forecast</option>)}
-        </select>
+        isOpen && (
+          <select className="mp-select" value={fcDays}
+            onChange={e => { setFcDays(+e.target.value); setLoaded(false) }}
+            onClick={e => e.stopPropagation()}>
+            {[7, 14, 21, 30].map(d => <option key={d} value={d}>{d}d forecast</option>)}
+          </select>
+        )
       }
     >
-      {data && (
+      {loading ? <Loader text="Training ARIMA model…" /> : data && (
         <>
           <div className="mp-stat-row">
-            <StatCard label="RMSE"  value={data.metrics?.rmse}  unit="₹" hint="Root mean sq error" />
-            <StatCard label="MAE"   value={data.metrics?.mae}   unit="₹" hint="Mean absolute error" />
-            <StatCard label="MAPE"  value={data.metrics?.mape}  unit="%" hint="Mean abs % error" />
+            <StatCard label="RMSE" value={data.metrics?.rmse} unit="₹" hint="Root mean sq error" />
+            <StatCard label="MAE"  value={data.metrics?.mae}  unit="₹" hint="Mean absolute error" />
+            <StatCard label="MAPE" value={data.metrics?.mape} unit="%" hint="Mean abs % error" />
             <div className="mp-pred-cell">
               <div className="mp-pred-label">Forecast trend</div>
-              <PredictionBadge direction={forecastUp ? 'UP' : 'DOWN'} />
+              <PredictionBadge direction={firstForecast >= lastActual ? 'UP' : 'DOWN'} />
             </div>
           </div>
-
-          {data?.cached && data?.trained_at && (
-            <div className="cache-badge">
-              ✓ Cached · trained {Math.round((Date.now() - new Date(data.trained_at)) / 3600000)}h ago
-            </div>
-          )}
-
-          <ResponsiveContainer width="100%" height={280}>
+          <ResponsiveContainer width="100%" height={260}>
             <ComposedChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="date" tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-              <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false}
-                tickFormatter={v => `₹${v.toLocaleString('en-IN')}`} width={80} />
-              <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }}
-                formatter={(v, n) => [`₹${fmt(v)}`, n]} />
+              <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `₹${v.toLocaleString('en-IN')}`} width={80} />
+              <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }} formatter={(v, n) => [`₹${fmt(v)}`, n]} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              {/* Confidence band */}
               <Area type="monotone" dataKey="upper" stroke="none" fill="#6c8ef730" name="95% CI" />
-              <Area type="monotone" dataKey="lower" stroke="none" fill="var(--bg)"  name="" legendType="none" />
-              <Line type="monotone" dataKey="actual"    stroke="#e2e8f0" dot={false} strokeWidth={2} name="Actual" connectNulls />
-              <Line type="monotone" dataKey="predicted" stroke="#6c8ef7" dot={false} strokeWidth={2}
-                strokeDasharray="5 3" name="Forecast" connectNulls />
+              <Area type="monotone" dataKey="lower" stroke="none" fill="var(--bg)" name="" legendType="none" />
+              <Line type="monotone" dataKey="actual"    stroke="#e2e8f0" dot={false} strokeWidth={2} name="Actual"   connectNulls />
+              <Line type="monotone" dataKey="predicted" stroke="#6c8ef7" dot={false} strokeWidth={2} strokeDasharray="5 3" name="Forecast" connectNulls />
             </ComposedChart>
           </ResponsiveContainer>
-
           <div className="forecast-table-wrap">
             <table className="forecast-table">
               <thead><tr><th>Date</th><th>Predicted</th><th>Lower 95%</th><th>Upper 95%</th></tr></thead>
@@ -126,9 +114,7 @@ function ARIMAPanel({ symbol, days }) {
                 {data.forecast?.slice(0, 7).map((r, i) => (
                   <tr key={i}>
                     <td>{fmtDate(r.date)}</td>
-                    <td className={r.predicted >= (data.forecast[i - 1]?.predicted ?? data.last_actual) ? 'up' : 'down'}>
-                      ₹{fmt(r.predicted)}
-                    </td>
+                    <td className={r.predicted >= (data.forecast[i-1]?.predicted ?? data.last_actual) ? 'up' : 'down'}>₹{fmt(r.predicted)}</td>
                     <td className="muted">₹{fmt(r.lower_95)}</td>
                     <td className="muted">₹{fmt(r.upper_95)}</td>
                   </tr>
@@ -138,59 +124,113 @@ function ARIMAPanel({ symbol, days }) {
           </div>
         </>
       )}
-    </Panel>
+    </AccordionPanel>
   )
 }
 
-// ─── Linear Regression Panel ──────────────────────────────────────────────────
-function LinearPanel({ symbol, days }) {
+// ─── Prophet ──────────────────────────────────────────────────────────────────
+function ProphetPanel({ symbol, days, isOpen, onToggle }) {
   const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(false)
+  const [fcDays, setFcDays] = useState(30)
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
+    if (!isOpen || loaded) return
     setLoading(true)
-    mlApi.linear(symbol, days)
-      .then(setData).catch(console.error).finally(() => setLoading(false))
-  }, [symbol, days])
+    mlApi.prophet(symbol, Math.max(days, 365), fcDays)
+      .then(d => { setData(d); setLoaded(true) }).catch(console.error).finally(() => setLoading(false))
+  }, [isOpen, loaded, symbol, days, fcDays])
+  useEffect(() => { setLoaded(false) }, [symbol, days, fcDays])
+
+  const chartData = [
+    ...(data?.historical?.slice(-90) || []).map(d => ({ date: fmtDate(d.date), actual: d.actual, fitted: d.fitted })),
+    ...(data?.forecast || []).map(d => ({ date: fmtDate(d.date), predicted: d.predicted, lower: d.lower_95, upper: d.upper_95 })),
+  ]
 
   return (
-    <Panel title="Linear & Logistic Regression"
-      subtitle="Ridge regression for return magnitude · Logistic for direction"
-      loading={loading}
+    <AccordionPanel id="prophet" title="Prophet Forecast"
+      subtitle="Trend + weekly + yearly + monthly seasonality"
+      isOpen={isOpen} onToggle={onToggle}
+      badge={data ? `${data.trend?.direction} trend` : null}
+      controls={
+        isOpen && (
+          <select className="mp-select" value={fcDays}
+            onChange={e => { setFcDays(+e.target.value); setLoaded(false) }}
+            onClick={e => e.stopPropagation()}>
+            {[14, 30, 60, 90].map(d => <option key={d} value={d}>{d}d forecast</option>)}
+          </select>
+        )
+      }
     >
-      {data && (
+      {loading ? <Loader text="Training Prophet model…" /> : data && (
+        <>
+          <div className="mp-stat-row">
+            <StatCard label="Trend"           value={null}  signal={data.trend?.direction === 'upward' ? 'bullish' : 'bearish'} hint={data.trend?.direction} />
+            <StatCard label="Trend Change"    value={data.trend?.change_pct}              unit="%" />
+            <StatCard label="30d Target"      value={data.summary?.predicted_30d}         unit="₹" />
+            <StatCard label="Expected Return" value={data.summary?.expected_return_pct}   unit="%" />
+          </div>
+          <ResponsiveContainer width="100%" height={260}>
+            <ComposedChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="date" tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+              <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={v => `₹${v.toLocaleString('en-IN')}`} width={80} />
+              <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }} formatter={(v, n) => [`₹${fmt(v)}`, n]} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Area type="monotone" dataKey="upper" stroke="none" fill="#34d39920" name="95% CI" />
+              <Area type="monotone" dataKey="lower" stroke="none" fill="var(--bg)"  name="" legendType="none" />
+              <Line type="monotone" dataKey="actual"    stroke="#e2e8f0" dot={false} strokeWidth={2} name="Actual"   connectNulls />
+              <Line type="monotone" dataKey="fitted"    stroke="#6c8ef7" dot={false} strokeWidth={1} strokeDasharray="2 2" name="Fitted" connectNulls />
+              <Line type="monotone" dataKey="predicted" stroke="#34d399" dot={false} strokeWidth={2} strokeDasharray="5 3" name="Forecast" connectNulls />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </>
+      )}
+    </AccordionPanel>
+  )
+}
+
+// ─── Linear Regression ────────────────────────────────────────────────────────
+function LinearPanel({ symbol, days, isOpen, onToggle }) {
+  const [data, setData]     = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen || loaded) return
+    setLoading(true)
+    mlApi.linear(symbol, days)
+      .then(d => { setData(d); setLoaded(true) }).catch(console.error).finally(() => setLoading(false))
+  }, [isOpen, loaded, symbol, days])
+  useEffect(() => { setLoaded(false) }, [symbol, days])
+
+  return (
+    <AccordionPanel id="linear" title="Linear & Logistic Regression"
+      subtitle="Ridge regression for magnitude · Logistic for direction"
+      isOpen={isOpen} onToggle={onToggle}
+      badge={data ? `${data.prediction?.direction} ${data.prediction?.confidence_pct}%` : null}
+    >
+      {loading ? <Loader text="Training regression models…" /> : data && (
         <>
           <div className="mp-pred-row">
-            <PredictionBadge
-              direction={data.prediction?.direction}
-              confidence={data.prediction?.confidence_pct}
-              label="tomorrow"
-            />
+            <PredictionBadge direction={data.prediction?.direction} confidence={data.prediction?.confidence_pct} label="tomorrow" />
             <div className="mp-pred-details">
-              <div className="mp-detail">
-                <span>Predicted return</span>
+              <div className="mp-detail"><span>Predicted return</span>
                 <span className={data.prediction?.predicted_return_pct >= 0 ? 'up' : 'down'}>
                   {data.prediction?.predicted_return_pct >= 0 ? '+' : ''}{fmt(data.prediction?.predicted_return_pct, 3)}%
                 </span>
               </div>
-              <div className="mp-detail">
-                <span>Predicted price</span>
-                <span>₹{fmt(data.prediction?.predicted_price)}</span>
-              </div>
-              <div className="mp-detail">
-                <span>Prob. up</span>
-                <span>{fmt(data.prediction?.prob_up_pct)}%</span>
-              </div>
+              <div className="mp-detail"><span>Predicted price</span><span>₹{fmt(data.prediction?.predicted_price)}</span></div>
+              <div className="mp-detail"><span>Prob. up</span><span>{fmt(data.prediction?.prob_up_pct)}%</span></div>
             </div>
           </div>
-
           <div className="mp-stat-row">
             <StatCard label="Direction Accuracy" value={data.metrics?.direction_accuracy_pct} unit="%" hint="on test set" />
-            <StatCard label="CV Accuracy"         value={data.metrics?.cv_accuracy_mean_pct}  unit="%" hint="5-fold time series CV" />
-            <StatCard label="CV Std Dev"          value={data.metrics?.cv_accuracy_std_pct}   unit="%" hint="lower = more stable" />
-            <StatCard label="Regression RMSE"     value={data.metrics?.regression_rmse}       unit="%" hint="next-day return error" />
+            <StatCard label="CV Accuracy"         value={data.metrics?.cv_accuracy_mean_pct}  unit="%" hint="5-fold CV" />
+            <StatCard label="CV Std Dev"          value={data.metrics?.cv_accuracy_std_pct}   unit="%" />
+            <StatCard label="Regression RMSE"     value={data.metrics?.regression_rmse}       unit="%" />
           </div>
-
           <h4 className="mp-section-title">Top Predictive Features</h4>
           <div className="feature-bars">
             {data.top_features?.slice(0, 10).map((f, i) => {
@@ -198,9 +238,7 @@ function LinearPanel({ symbol, days }) {
               return (
                 <div key={i} className="feat-row">
                   <span className="feat-name">{f.feature}</span>
-                  <div className="feat-bar-wrap">
-                    <div className="feat-bar" style={{ width: `${(f.importance / maxImp) * 100}%` }} />
-                  </div>
+                  <div className="feat-bar-wrap"><div className="feat-bar" style={{ width: `${(f.importance / maxImp) * 100}%` }} /></div>
                   <span className="feat-val">{fmt(f.importance, 4)}</span>
                 </div>
               )
@@ -208,36 +246,36 @@ function LinearPanel({ symbol, days }) {
           </div>
         </>
       )}
-    </Panel>
+    </AccordionPanel>
   )
 }
 
-// ─── XGBoost Panel ────────────────────────────────────────────────────────────
-function XGBoostPanel({ symbol, days }) {
+// ─── XGBoost ──────────────────────────────────────────────────────────────────
+function XGBoostPanel({ symbol, days, isOpen, onToggle }) {
   const [data, setData]     = useState(null)
   const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
+    if (!isOpen || loaded) return
     setLoading(true)
     mlApi.xgboost(symbol, days)
-      .then(setData).catch(console.error).finally(() => setLoading(false))
-  }, [symbol, days])
+      .then(d => { setData(d); setLoaded(true) }).catch(console.error).finally(() => setLoading(false))
+  }, [isOpen, loaded, symbol, days])
+  useEffect(() => { setLoaded(false) }, [symbol, days])
 
   return (
-    <Panel title="XGBoost"
-      subtitle="Gradient boosted trees · Next-day + 5-day direction prediction"
-      loading={loading}
+    <AccordionPanel id="xgb" title="XGBoost"
+      subtitle="Gradient boosted trees · Next-day + 5-day prediction"
+      isOpen={isOpen} onToggle={onToggle}
+      badge={data ? `${data.prediction?.direction} · ${data.prediction?.confidence_label}` : null}
     >
-      {data && (
+      {loading ? <Loader text="Training XGBoost model…" /> : data && (
         <>
           <div className="mp-pred-row">
             <div className="pred-group">
               <div className="pred-group-label">Tomorrow</div>
-              <PredictionBadge
-                direction={data.prediction?.direction}
-                confidence={data.prediction?.confidence_pct}
-                label={data.prediction?.confidence_label}
-              />
+              <PredictionBadge direction={data.prediction?.direction} confidence={data.prediction?.confidence_pct} label={data.prediction?.confidence_label} />
             </div>
             <div className="pred-group">
               <div className="pred-group-label">5-Day Outlook</div>
@@ -247,28 +285,24 @@ function XGBoostPanel({ symbol, days }) {
               />
             </div>
             <div className="mp-pred-details">
-              <div className="mp-detail"><span>5d target price</span><span>₹{fmt(data.prediction?.pred_5d_price)}</span></div>
+              <div className="mp-detail"><span>5d target</span><span>₹{fmt(data.prediction?.pred_5d_price)}</span></div>
               <div className="mp-detail"><span>Prob. up</span><span>{fmt(data.prediction?.prob_up_pct)}%</span></div>
             </div>
           </div>
-
           <div className="mp-stat-row">
-            <StatCard label="Direction Accuracy"    value={data.metrics?.direction_accuracy_pct}    unit="%" hint="next-day, test set" />
-            <StatCard label="5d Direction Accuracy" value={data.metrics?.['5d_direction_accuracy_pct']} unit="%" hint="5-day outlook" />
-            <StatCard label="CV Accuracy"           value={data.metrics?.cv_accuracy_mean_pct}      unit="%" hint="5-fold CV" />
-            <StatCard label="CV Std Dev"            value={data.metrics?.cv_accuracy_std_pct}       unit="%" />
+            <StatCard label="Direction Accuracy"    value={data.metrics?.direction_accuracy_pct}        unit="%" />
+            <StatCard label="5d Direction Acc."     value={data.metrics?.['5d_direction_accuracy_pct']} unit="%" />
+            <StatCard label="CV Accuracy"           value={data.metrics?.cv_accuracy_mean_pct}          unit="%" />
+            <StatCard label="CV Std Dev"            value={data.metrics?.cv_accuracy_std_pct}           unit="%" />
           </div>
-
-          <h4 className="mp-section-title">Feature Importance (XGBoost gain)</h4>
+          <h4 className="mp-section-title">Feature Importance</h4>
           <div className="feature-bars">
             {data.top_features?.slice(0, 12).map((f, i) => {
               const maxImp = data.top_features[0]?.importance || 1
               return (
                 <div key={i} className="feat-row">
                   <span className="feat-name">{f.feature}</span>
-                  <div className="feat-bar-wrap">
-                    <div className="feat-bar xgb" style={{ width: `${(f.importance / maxImp) * 100}%` }} />
-                  </div>
+                  <div className="feat-bar-wrap"><div className="feat-bar xgb" style={{ width: `${(f.importance / maxImp) * 100}%` }} /></div>
                   <span className="feat-val">{fmt(f.importance, 4)}</span>
                 </div>
               )
@@ -276,51 +310,52 @@ function XGBoostPanel({ symbol, days }) {
           </div>
         </>
       )}
-    </Panel>
+    </AccordionPanel>
   )
 }
 
-// ─── Isolation Forest Panel ───────────────────────────────────────────────────
-function IsolationForestPanel({ symbol, days }) {
+// ─── Isolation Forest ─────────────────────────────────────────────────────────
+function IsolationForestPanel({ symbol, days, isOpen, onToggle }) {
   const [data, setData]         = useState(null)
   const [loading, setLoading]   = useState(false)
   const [contamination, setCont] = useState(0.05)
+  const [loaded, setLoaded]     = useState(false)
 
   useEffect(() => {
+    if (!isOpen || loaded) return
     setLoading(true)
     mlApi.isolationForest(symbol, days, contamination)
-      .then(setData).catch(console.error).finally(() => setLoading(false))
-  }, [symbol, days, contamination])
+      .then(d => { setData(d); setLoaded(true) }).catch(console.error).finally(() => setLoading(false))
+  }, [isOpen, loaded, symbol, days, contamination])
+  useEffect(() => { setLoaded(false) }, [symbol, days, contamination])
 
   const scoreData = data?.score_series?.slice(-200) || []
 
   return (
-    <Panel title="Isolation Forest Anomaly Detection"
-      subtitle="Multi-dimensional anomaly detection across all technical indicators"
-      loading={loading}
+    <AccordionPanel id="iforest" title="Isolation Forest Anomaly Detection"
+      subtitle="Multi-dimensional anomaly detection across all indicators"
+      isOpen={isOpen} onToggle={onToggle}
+      badge={data ? `${data.summary?.anomaly_count} anomalies` : null}
       controls={
-        <select className="mp-select" value={contamination}
-          onChange={e => setCont(parseFloat(e.target.value))}>
-          {[0.03, 0.05, 0.08, 0.10, 0.15].map(c =>
-            <option key={c} value={c}>{(c * 100).toFixed(0)}% anomalies</option>)}
-        </select>
+        isOpen && (
+          <select className="mp-select" value={contamination}
+            onChange={e => { setCont(parseFloat(e.target.value)); setLoaded(false) }}
+            onClick={e => e.stopPropagation()}>
+            {[0.03, 0.05, 0.08, 0.10, 0.15].map(c =>
+              <option key={c} value={c}>{(c * 100).toFixed(0)}% anomalies</option>)}
+          </select>
+        )
       }
     >
-      {data && (
+      {loading ? <Loader text="Training Isolation Forest…" /> : data && (
         <>
           <div className="mp-stat-row">
-            <StatCard label="Anomalies Found"  value={data.summary?.anomaly_count} hint={`${data.summary?.anomaly_pct}% of days`} />
-            <StatCard label="Severe"           value={data.summary?.severe_count}  />
-            <StatCard label="Moderate"         value={data.summary?.moderate_count} />
-            <StatCard label="IF-only Anomalies" value={data.vs_zscore?.if_only_count}
-              hint="missed by Z-score" />
+            <StatCard label="Anomalies Found"   value={data.summary?.anomaly_count}  hint={`${data.summary?.anomaly_pct}% of days`} />
+            <StatCard label="Severe"             value={data.summary?.severe_count} />
+            <StatCard label="Moderate"           value={data.summary?.moderate_count} />
+            <StatCard label="IF-only Anomalies"  value={data.vs_zscore?.if_only_count} hint="missed by Z-score" />
           </div>
-
-          <div className="if-note">
-            <Info size={12} />
-            {data.vs_zscore?.note}
-          </div>
-
+          <div className="if-note"><Info size={12} />{data.vs_zscore?.note}</div>
           {scoreData.length > 0 && (
             <>
               <h4 className="mp-section-title">Anomaly Score Over Time</h4>
@@ -330,25 +365,17 @@ function IsolationForestPanel({ symbol, days }) {
                   <XAxis dataKey="date" tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
                   <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} domain={[0, 100]} />
                   <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }} />
-                  <ReferenceLine y={50} stroke="var(--yellow)" strokeDasharray="4 2"
-                    label={{ value: 'threshold', fill: 'var(--yellow)', fontSize: 9 }} />
-                  <Area type="monotone" dataKey="anomaly_score" stroke="#6c8ef7"
-                    fill="#6c8ef720" strokeWidth={1.5} name="Anomaly Score" dot={false} />
-                  <Scatter dataKey="anomaly_score"
-                    data={scoreData.filter(d => d.is_anomaly).map(d => ({ ...d, date: fmtDate(d.date) }))}
-                    fill="var(--red)" name="Anomaly" />
+                  <ReferenceLine y={50} stroke="var(--yellow)" strokeDasharray="4 2" label={{ value: 'threshold', fill: 'var(--yellow)', fontSize: 9 }} />
+                  <Area type="monotone" dataKey="anomaly_score" stroke="#6c8ef7" fill="#6c8ef720" strokeWidth={1.5} name="Anomaly Score" dot={false} />
                 </ComposedChart>
               </ResponsiveContainer>
             </>
           )}
-
           {data.anomalies?.length > 0 && (
             <>
               <h4 className="mp-section-title">Most Significant Anomalies</h4>
               <table className="anomaly-table">
-                <thead>
-                  <tr><th>Date</th><th>Close</th><th>Return</th><th>Vol Ratio</th><th>Score</th><th>Severity</th><th>Drivers</th></tr>
-                </thead>
+                <thead><tr><th>Date</th><th>Close</th><th>Return</th><th>Vol Ratio</th><th>Score</th><th>Severity</th><th>Drivers</th></tr></thead>
                 <tbody>
                   {data.anomalies.slice(0, 10).map((a, i) => (
                     <tr key={i}>
@@ -367,81 +394,30 @@ function IsolationForestPanel({ symbol, days }) {
           )}
         </>
       )}
-    </Panel>
-  )
-}
-
-// ─── Prophet Panel ────────────────────────────────────────────────────────────
-function ProphetPanel({ symbol, days }) {
-  const [data, setData]     = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [fcDays, setFcDays] = useState(30)
-
-  useEffect(() => {
-    setLoading(true)
-    mlApi.prophet(symbol, Math.max(days, 365), fcDays)
-      .then(setData).catch(console.error).finally(() => setLoading(false))
-  }, [symbol, days, fcDays])
-
-  const chartData = [
-    ...(data?.historical?.slice(-90) || []).map(d => ({
-      date: fmtDate(d.date), actual: d.actual, fitted: d.fitted
-    })),
-    ...(data?.forecast || []).map(d => ({
-      date: fmtDate(d.date), predicted: d.predicted,
-      lower: d.lower_95, upper: d.upper_95
-    })),
-  ]
-
-  return (
-    <Panel title="Prophet Forecast"
-      subtitle="Trend + weekly + yearly + monthly seasonality"
-      loading={loading}
-      controls={
-        <select className="mp-select" value={fcDays} onChange={e => setFcDays(+e.target.value)}>
-          {[14, 30, 60, 90].map(d => <option key={d} value={d}>{d}d forecast</option>)}
-        </select>
-      }
-    >
-      {data && (
-        <>
-          <div className="mp-stat-row">
-            <StatCard label="Trend Direction"  value={null}
-              signal={data.trend?.direction === 'upward' ? 'bullish' : 'bearish'}
-              hint={data.trend?.direction} />
-            <StatCard label="Trend Change"     value={data.trend?.change_pct}          unit="%" hint="over forecast window" />
-            <StatCard label="30d Target"       value={data.summary?.predicted_30d}     unit="₹" />
-            <StatCard label="Expected Return"  value={data.summary?.expected_return_pct} unit="%" />
-          </div>
-
-          <ResponsiveContainer width="100%" height={280}>
-            <ComposedChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="date" tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-              <YAxis tick={{ fill: 'var(--muted)', fontSize: 10 }} tickLine={false} axisLine={false}
-                tickFormatter={v => `₹${v.toLocaleString('en-IN')}`} width={80} />
-              <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11 }}
-                formatter={(v, n) => [`₹${fmt(v)}`, n]} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Area type="monotone" dataKey="upper" stroke="none" fill="#34d39920" name="95% CI" />
-              <Area type="monotone" dataKey="lower" stroke="none" fill="var(--bg)" name="" legendType="none" />
-              <Line type="monotone" dataKey="actual"    stroke="#e2e8f0" dot={false} strokeWidth={2} name="Actual" connectNulls />
-              <Line type="monotone" dataKey="fitted"    stroke="#6c8ef7" dot={false} strokeWidth={1} strokeDasharray="2 2" name="Fitted" connectNulls />
-              <Line type="monotone" dataKey="predicted" stroke="#34d399" dot={false} strokeWidth={2} strokeDasharray="5 3" name="Forecast" connectNulls />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </>
-      )}
-    </Panel>
+    </AccordionPanel>
   )
 }
 
 // ─── Main ML Page ─────────────────────────────────────────────────────────────
+const ALL_PANELS = ['arima', 'prophet', 'linear', 'xgb', 'iforest']
+
 export default function MLPage() {
   const { symbol } = useParams()
   const navigate   = useNavigate()
   const decoded    = decodeURIComponent(symbol)
-  const [days, setDays] = useState(365)
+  const [days, setDays]       = useState(365)
+  const [openPanels, setOpen] = useState(new Set())
+
+  const toggle = (id) => {
+    setOpen(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const expandAll   = () => setOpen(new Set(ALL_PANELS))
+  const collapseAll = () => setOpen(new Set())
 
   const TF_OPTIONS = [
     { label: '6M', days: 180 },
@@ -462,24 +438,27 @@ export default function MLPage() {
       </div>
 
       <div className="ml-page-header">
-        <h1>ML Predictions</h1>
-        <p className="page-sub">{decoded} · {days}-day training window · Models retrain on each window change</p>
-        <div className="ml-disclaimer">
-          <Info size={12} /> Predictions are probabilistic estimates based on historical patterns.
-          Not financial advice. Past performance does not guarantee future results.
+        <div className="ml-header-row">
+          <div>
+            <h1>ML Predictions</h1>
+            <p className="page-sub">{decoded} · {days}-day training window · Click any model to expand</p>
+            <div className="ml-disclaimer">
+              <Info size={12} /> Predictions are probabilistic estimates. Not financial advice.
+            </div>
+          </div>
+          <div className="ap-expand-btns">
+            <button className="ap-expand-btn" onClick={expandAll}>Expand all</button>
+            <button className="ap-expand-btn" onClick={collapseAll}>Collapse all</button>
+          </div>
         </div>
       </div>
 
-      <div className="ml-grid">
-        <div className="ml-col-wide">
-          <ARIMAPanel          symbol={decoded} days={days} />
-          <ProphetPanel        symbol={decoded} days={days} />
-          <IsolationForestPanel symbol={decoded} days={days} />
-        </div>
-        <div className="ml-col-narrow">
-          <LinearPanel  symbol={decoded} days={days} />
-          <XGBoostPanel symbol={decoded} days={days} />
-        </div>
+      <div className="ml-accordion">
+        <ARIMAPanel          symbol={decoded} days={days} isOpen={openPanels.has('arima')}   onToggle={toggle} />
+        <ProphetPanel        symbol={decoded} days={days} isOpen={openPanels.has('prophet')} onToggle={toggle} />
+        <LinearPanel         symbol={decoded} days={days} isOpen={openPanels.has('linear')}  onToggle={toggle} />
+        <XGBoostPanel        symbol={decoded} days={days} isOpen={openPanels.has('xgb')}     onToggle={toggle} />
+        <IsolationForestPanel symbol={decoded} days={days} isOpen={openPanels.has('iforest')} onToggle={toggle} />
       </div>
     </div>
   )

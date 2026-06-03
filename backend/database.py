@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from sqlalchemy import (
     Column, String, Float, DateTime, Integer,
-    Text, UniqueConstraint, ForeignKey, Boolean
+    Text, UniqueConstraint, ForeignKey, Boolean, Date
 )
 from datetime import datetime
 
@@ -92,6 +92,31 @@ class MLResult(Base):
         UniqueConstraint("symbol", "model", "days", name="uq_ml_result"),
     )
 
+class PredictionLog(Base):
+    __tablename__ = "prediction_log"
+
+    id                 = Column(Integer, primary_key=True, autoincrement=True)
+    symbol             = Column(String(20),  nullable=False, index=True)
+    model              = Column(String(20),  nullable=False)  # arima/xgboost/linear/prophet
+    prediction_date    = Column(Date,        nullable=False, index=True)  # the day being predicted
+    predicted_at       = Column(DateTime,    default=datetime.utcnow)
+
+    # Prediction values (locked at prediction time)
+    predicted_direction = Column(String(4),  nullable=False)   # UP / DOWN
+    predicted_price     = Column(Float,      nullable=True)
+    confidence_pct      = Column(Float,      nullable=True)
+    prev_close          = Column(Float,      nullable=True)    # price when prediction was made
+
+    # Actuals (filled in after market close via backfill)
+    actual_price        = Column(Float,      nullable=True)
+    actual_direction    = Column(String(4),  nullable=True)
+    was_correct         = Column(Boolean,    nullable=True)
+    price_error_pct     = Column(Float,      nullable=True)    # abs % error on price
+    filled_at           = Column(DateTime,   nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("symbol", "model", "prediction_date", name="uq_pred_log"),
+    )
 
 async def create_tables():
     async with engine.begin() as conn:
